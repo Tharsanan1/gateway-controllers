@@ -130,7 +130,7 @@ func transformToRatelimitParams(params map[string]interface{}, template map[stri
 	var quotas []interface{}
 
 	// Helper to create a quota for a specific token type
-	addQuota := func(name string, limitsKey string, jsonPathKey string) {
+	addQuota := func(name string, limitsKey string, templateKey string) {
 		limits := params[limitsKey]
 		if limits == nil {
 			return
@@ -147,8 +147,8 @@ func transformToRatelimitParams(params map[string]interface{}, template map[stri
 		// Dynamically inject the cost extraction JSON path from the provider template
 		if template != nil {
 			if spec, ok := template["spec"].(map[string]interface{}); ok {
-				if usage, ok := spec["usage"].(map[string]interface{}); ok {
-					if path, ok := usage[jsonPathKey].(string); ok && path != "" {
+				if usage, ok := spec[templateKey].(map[string]interface{}); ok {
+					if path, ok := usage["identifier"].(string); ok && path != "" {
 						quota["costExtraction"] = map[string]interface{}{
 							"enabled": true,
 							"sources": []interface{}{
@@ -165,9 +165,9 @@ func transformToRatelimitParams(params map[string]interface{}, template map[stri
 		quotas = append(quotas, quota)
 	}
 
-	addQuota("prompt_tokens", "promptTokenLimits", "prompt_tokens")
-	addQuota("completion_tokens", "completionTokenLimits", "completion_tokens")
-	addQuota("total_tokens", "totalTokenLimits", "total_tokens")
+	addQuota("prompt_tokens", "promptTokenLimits", "promptTokens")
+	addQuota("completion_tokens", "completionTokenLimits", "completionTokens")
+	addQuota("total_tokens", "totalTokenLimits", "totalTokens")
 
 	rlParams := map[string]interface{}{
 		"quotas": quotas,
