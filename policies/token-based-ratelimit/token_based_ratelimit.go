@@ -38,7 +38,9 @@ type TokenBasedRateLimitPolicy struct {
 	delegates sync.Map // map[string]policy.Policy (providerName -> advanced-ratelimit instance)
 }
 
-// GetPolicy initializes the token-based rate limit policy.
+// GetPolicy creates and initializes the token-based rate limit policy.
+// Note: Actual delegates are created lazily in OnRequest because the 
+// extraction paths depend on the provider resolved at runtime.
 func GetPolicy(
 	metadata policy.PolicyMetadata,
 	params map[string]interface{},
@@ -48,8 +50,8 @@ func GetPolicy(
 	}, nil
 }
 
-// Mode returns the processing mode. We need to buffer the response body
-// to extract token usage information.
+// Mode returns the processing mode for this policy.
+// We buffer the response body to allow the delegate to extract token usage information.
 func (p *TokenBasedRateLimitPolicy) Mode() policy.ProcessingMode {
 	return policy.ProcessingMode{
 		RequestHeaderMode:  policy.HeaderModeProcess,
@@ -59,55 +61,28 @@ func (p *TokenBasedRateLimitPolicy) Mode() policy.ProcessingMode {
 	}
 }
 
-// resolveDelegate ensures an advanced-ratelimit instance exists for the given provider.
-func (p *TokenBasedRateLimitPolicy) resolveDelegate(ctx *policy.RequestContext, providerName string, params map[string]interface{}) (policy.Policy, error) {
-	if delegate, ok := p.delegates.Load(providerName); ok {
-		return delegate.(policy.Policy), nil
-	}
-
-	// Fetch template from LazyResourceStore
-	store := policy.GetLazyResourceStoreInstance()
-	templateResource, err := store.GetResourceByIDAndType(providerName, ResourceTypeLlmProviderTemplate)
-	if err != nil {
-		return nil, err
-	}
-
-	// Transform LLM limits into advanced-ratelimit quotas using JSON paths from the template
-	rlParams := transformToRatelimitParams(params, templateResource.Resource)
-
-	// Create the delegate instance
-	delegate, err := ratelimit.GetPolicy(p.metadata, rlParams)
-	if err != nil {
-		return nil, err
-	}
-
-	p.delegates.Store(providerName, delegate)
-	return delegate, nil
-}
-
-// OnRequest dynamically resolves the delegate and executes the rate limit check.
+// OnRequest processes the request phase by delegating to a provider-specific ratelimit instance.
 func (p *TokenBasedRateLimitPolicy) OnRequest(
 	ctx *policy.RequestContext,
 	params map[string]interface{},
 ) policy.RequestAction {
 	providerName, ok := ctx.SharedContext.Metadata[MetadataKeyProviderName].(string)
 	if !ok || providerName == "" {
-		slog.WarnContext(ctx.Context(), "Provider name not found in metadata; skipping token-based rate limit",
-			"request_id", ctx.SharedContext.RequestID)
+		slog.DebugContext(ctx.Context(), "Provider name not found in metadata; skipping token-based rate limit")
 		return policy.ContinueRequest()
 	}
 
-	delegate, err := p.resolveDelegate(ctx, providerName, params)
+	delegate, err := p.resolveDelegate(providerName, params)
 	if err != nil {
-		slog.WarnContext(ctx.Context(), "Failed to resolve rate limit delegate for provider; skipping",
-			"provider", providerName,
-			"error", err)
+		slog.WarnContext(ctx.Context(), "Failed to resolve rate limit delegate for provider",
+			"provider", providerName, "error", err)
 		return policy.ContinueRequest()
 	}
 
 	return delegate.OnRequest(ctx, params)
 }
 
+// OnResponse processes the response phase by delegating to the same provider-specific instance.
 func (p *TokenBasedRateLimitPolicy) OnResponse(
 	ctx *policy.ResponseContext,
 	params map[string]interface{},
@@ -117,8 +92,6 @@ func (p *TokenBasedRateLimitPolicy) OnResponse(
 		return nil
 	}
 
-	// We don't use resolveDelegate here because OnResponse should only happen
-	// if OnRequest succeeded and found a provider.
 	if delegate, ok := p.delegates.Load(providerName); ok {
 		return delegate.(policy.Policy).OnResponse(ctx, params)
 	}
@@ -126,11 +99,37 @@ func (p *TokenBasedRateLimitPolicy) OnResponse(
 	return nil
 }
 
-// transformToRatelimitParams converts LLM token limits into advanced-ratelimit quotas.
+// resolveDelegate ensures an advanced-ratelimit instance exists for the given provider.
+func (p *TokenBasedRateLimitPolicy) resolveDelegate(providerName string, params map[string]interface{}) (policy.Policy, error) {
+	if val, ok := p.delegates.Load(providerName); ok {
+		return val.(policy.Policy), nil
+	}
+
+	// Fetch provider template to get extraction paths
+	store := policy.GetLazyResourceStoreInstance()
+	templateResource, err := store.GetResourceByIDAndType(providerName, ResourceTypeLlmProviderTemplate)
+	if err != nil {
+		return nil, err
+	}
+
+	// Transform our simplified LLM params into advanced-ratelimit parameters
+	rlParams := transformToRatelimitParams(params, templateResource.Resource)
+
+	// Create the delegate instance using the advanced-ratelimit logic
+	delegate, err := ratelimit.GetPolicy(p.metadata, rlParams)
+	if err != nil {
+		return nil, err
+	}
+
+	p.delegates.Store(providerName, delegate)
+	return delegate, nil
+}
+
+// transformToRatelimitParams converts LLM-specific parameters to the advanced-ratelimit structure.
 func transformToRatelimitParams(params map[string]interface{}, template map[string]interface{}) map[string]interface{} {
 	var quotas []interface{}
 
-	// Helper to add a quota
+	// Helper to create a quota for a specific token type
 	addQuota := func(name string, limitsKey string, jsonPathKey string) {
 		limits := params[limitsKey]
 		if limits == nil {
@@ -145,12 +144,11 @@ func transformToRatelimitParams(params map[string]interface{}, template map[stri
 			},
 		}
 
-		// Resolve JSON path from template if available
-		// Expected template structure: spec.usage.prompt_tokens, etc.
+		// Dynamically inject the cost extraction JSON path from the provider template
 		if template != nil {
 			if spec, ok := template["spec"].(map[string]interface{}); ok {
 				if usage, ok := spec["usage"].(map[string]interface{}); ok {
-					if path, ok := usage[jsonPathKey].(string); ok {
+					if path, ok := usage[jsonPathKey].(string); ok && path != "" {
 						quota["costExtraction"] = map[string]interface{}{
 							"enabled": true,
 							"sources": []interface{}{
@@ -175,7 +173,7 @@ func transformToRatelimitParams(params map[string]interface{}, template map[stri
 		"quotas": quotas,
 	}
 
-	// Pass through system parameters
+	// Pass through standard system parameters
 	for _, key := range []string{"algorithm", "backend", "redis", "memory"} {
 		if val, ok := params[key]; ok {
 			rlParams[key] = val
@@ -185,7 +183,7 @@ func transformToRatelimitParams(params map[string]interface{}, template map[stri
 	return rlParams
 }
 
-// convertLimits transforms our {count, duration} schema to advanced-ratelimit's {limit, duration}
+// convertLimits transforms the user-facing {count, duration} to advanced-ratelimit's {limit, duration}
 func convertLimits(rawLimits interface{}) []interface{} {
 	items, ok := rawLimits.([]interface{})
 	if !ok {
