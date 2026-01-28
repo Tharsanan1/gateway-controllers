@@ -27,9 +27,9 @@ import (
 )
 
 const (
-	ResourceTypeLlmProviderTemplate   = "LlmProviderTemplate"
+	ResourceTypeLlmProviderTemplate     = "LlmProviderTemplate"
 	ResourceTypeProviderTemplateMapping = "ProviderTemplateMapping"
-	MetadataKeyProviderName           = "provider_name"
+	MetadataKeyProviderName             = "provider_name"
 )
 
 // TokenBasedRateLimitPolicy delegates LLM token-based rate limiting to advanced-ratelimit
@@ -154,17 +154,19 @@ func transformToRatelimitParams(params map[string]interface{}, template map[stri
 		}
 
 		if template != nil {
-			if spec, ok := template["spec"].(map[string]interface{}); ok {
-				if usage, ok := spec[templateKey].(map[string]interface{}); ok {
-					if path, ok := usage["identifier"].(string); ok && path != "" {
-						quota["costExtraction"] = map[string]interface{}{
-							"enabled": true,
-							"sources": []interface{}{
-								map[string]interface{}{
-									"type":     "response_body",
-									"jsonPath": path,
+			if spec, ok := template["configuration"].(map[string]interface{}); ok {
+				if specData, ok := spec["spec"].(map[string]interface{}); ok {
+					if usage, ok := specData[templateKey].(map[string]interface{}); ok {
+						if path, ok := usage["identifier"].(string); ok && path != "" {
+							quota["costExtraction"] = map[string]interface{}{
+								"enabled": true,
+								"sources": []interface{}{
+									map[string]interface{}{
+										"type":     "response_body",
+										"jsonPath": path,
+									},
 								},
-							},
+							}
 						}
 					}
 				}
