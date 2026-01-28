@@ -57,7 +57,7 @@ func (p *TokenBasedRateLimitPolicy) Mode() policy.ProcessingMode {
 		RequestHeaderMode:  policy.HeaderModeProcess,
 		RequestBodyMode:    policy.BodyModeSkip,
 		ResponseHeaderMode: policy.HeaderModeProcess,
-		ResponseBodyMode:   policy.BodyModeBuffered,
+		ResponseBodyMode:   policy.BodyModeBuffer,
 	}
 }
 
@@ -68,15 +68,15 @@ func (p *TokenBasedRateLimitPolicy) OnRequest(
 ) policy.RequestAction {
 	providerName, ok := ctx.SharedContext.Metadata[MetadataKeyProviderName].(string)
 	if !ok || providerName == "" {
-		slog.DebugContext(ctx.Context(), "Provider name not found in metadata; skipping token-based rate limit")
-		return policy.ContinueRequest()
+		slog.Debug("Provider name not found in metadata; skipping token-based rate limit")
+		return nil
 	}
 
 	delegate, err := p.resolveDelegate(providerName, params)
 	if err != nil {
-		slog.WarnContext(ctx.Context(), "Failed to resolve rate limit delegate for provider",
+		slog.Warn("Failed to resolve rate limit delegate for provider",
 			"provider", providerName, "error", err)
-		return policy.ContinueRequest()
+		return nil
 	}
 
 	return delegate.OnRequest(ctx, params)
