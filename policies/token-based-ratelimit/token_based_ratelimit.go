@@ -64,18 +64,33 @@ func (p *TokenBasedRateLimitPolicy) OnRequest(
 	ctx *policy.RequestContext,
 	params map[string]interface{},
 ) policy.RequestAction {
+	slog.Debug("OnRequest: processing token-based rate limit",
+		"route", p.metadata.RouteName,
+		"params", params)
+
 	providerName, ok := ctx.SharedContext.Metadata[MetadataKeyProviderName].(string)
 	if !ok || providerName == "" {
-		slog.Debug("Provider name not found in metadata; skipping token-based rate limit")
+		slog.Debug("OnRequest: provider name not found in metadata; skipping token-based rate limit",
+			"route", p.metadata.RouteName)
 		return nil
 	}
 
+	slog.Debug("OnRequest: resolved provider",
+		"route", p.metadata.RouteName,
+		"provider", providerName)
+
 	delegate, err := p.resolveDelegate(providerName, params)
 	if err != nil {
-		slog.Warn("Failed to resolve rate limit delegate for provider",
-			"provider", providerName, "error", err)
+		slog.Warn("OnRequest: failed to resolve rate limit delegate for provider",
+			"route", p.metadata.RouteName,
+			"provider", providerName,
+			"error", err)
 		return nil
 	}
+
+	slog.Debug("OnRequest: delegating to advanced-ratelimit",
+		"route", p.metadata.RouteName,
+		"provider", providerName)
 
 	return delegate.OnRequest(ctx, params)
 }
@@ -85,14 +100,30 @@ func (p *TokenBasedRateLimitPolicy) OnResponse(
 	ctx *policy.ResponseContext,
 	params map[string]interface{},
 ) policy.ResponseAction {
+	slog.Debug("OnResponse: processing token-based rate limit",
+		"route", p.metadata.RouteName)
+
 	providerName, ok := ctx.SharedContext.Metadata[MetadataKeyProviderName].(string)
 	if !ok || providerName == "" {
+		slog.Debug("OnResponse: provider name not found in metadata; skipping",
+			"route", p.metadata.RouteName)
 		return nil
 	}
 
+	slog.Debug("OnResponse: looking up delegate",
+		"route", p.metadata.RouteName,
+		"provider", providerName)
+
 	if delegate, ok := p.delegates.Load(providerName); ok {
+		slog.Debug("OnResponse: delegating to advanced-ratelimit",
+			"route", p.metadata.RouteName,
+			"provider", providerName)
 		return delegate.(policy.Policy).OnResponse(ctx, params)
 	}
+
+	slog.Debug("OnResponse: no delegate found for provider",
+		"route", p.metadata.RouteName,
+		"provider", providerName)
 
 	return nil
 }
@@ -101,14 +132,29 @@ func (p *TokenBasedRateLimitPolicy) OnResponse(
 // This method is thread-safe and uses LoadOrStore to prevent race conditions when
 // multiple goroutines attempt to create a delegate for the same provider simultaneously.
 func (p *TokenBasedRateLimitPolicy) resolveDelegate(providerName string, params map[string]interface{}) (policy.Policy, error) {
+	slog.Debug("resolveDelegate: checking for existing delegate",
+		"route", p.metadata.RouteName,
+		"provider", providerName)
+
 	// Fast path: check if delegate already exists
 	if val, ok := p.delegates.Load(providerName); ok {
+		slog.Debug("resolveDelegate: found existing delegate (fast path)",
+			"route", p.metadata.RouteName,
+			"provider", providerName)
 		return val.(policy.Policy), nil
 	}
+
+	slog.Debug("resolveDelegate: creating new delegate (slow path)",
+		"route", p.metadata.RouteName,
+		"provider", providerName)
 
 	// Slow path: create the delegate (expensive operation)
 	delegate, err := p.createDelegate(providerName, params)
 	if err != nil {
+		slog.Error("resolveDelegate: failed to create delegate",
+			"route", p.metadata.RouteName,
+			"provider", providerName,
+			"error", err)
 		return nil, err
 	}
 
@@ -116,8 +162,15 @@ func (p *TokenBasedRateLimitPolicy) resolveDelegate(providerName string, params 
 	// This ensures only one delegate is created per provider even with concurrent access
 	if existing, loaded := p.delegates.LoadOrStore(providerName, delegate); loaded {
 		// Another goroutine already stored a delegate, use that one
+		slog.Debug("resolveDelegate: another goroutine created delegate, using existing",
+			"route", p.metadata.RouteName,
+			"provider", providerName)
 		return existing.(policy.Policy), nil
 	}
+
+	slog.Debug("resolveDelegate: successfully created and stored new delegate",
+		"route", p.metadata.RouteName,
+		"provider", providerName)
 
 	return delegate, nil
 }
@@ -125,39 +178,112 @@ func (p *TokenBasedRateLimitPolicy) resolveDelegate(providerName string, params 
 // createDelegate creates a new advanced-ratelimit delegate for the given provider.
 // This involves fetching resources from the store and transforming parameters.
 func (p *TokenBasedRateLimitPolicy) createDelegate(providerName string, params map[string]interface{}) (policy.Policy, error) {
+	slog.Debug("createDelegate: starting delegate creation",
+		"route", p.metadata.RouteName,
+		"provider", providerName)
+
 	store := policy.GetLazyResourceStoreInstance()
 
 	// 1. Get Provider-to-Template Mapping
+	slog.Debug("createDelegate: fetching provider template mapping",
+		"route", p.metadata.RouteName,
+		"provider", providerName,
+		"resourceType", ResourceTypeProviderTemplateMapping)
+
 	mappingResource, err := store.GetResourceByIDAndType(providerName, ResourceTypeProviderTemplateMapping)
 	if err != nil {
+		slog.Error("createDelegate: failed to get provider template mapping",
+			"route", p.metadata.RouteName,
+			"provider", providerName,
+			"error", err)
 		return nil, err
+	}
+
+	if mappingResource == nil {
+		slog.Error("createDelegate: provider template mapping not found",
+			"route", p.metadata.RouteName,
+			"provider", providerName)
+		return nil, nil
 	}
 
 	templateHandle, ok := mappingResource.Resource["template_handle"].(string)
 	if !ok || templateHandle == "" {
+		slog.Error("createDelegate: template_handle not found or empty in mapping",
+			"route", p.metadata.RouteName,
+			"provider", providerName,
+			"hasTemplateHandle", ok)
+		return nil, nil
+	}
+
+	slog.Debug("createDelegate: resolved template handle",
+		"route", p.metadata.RouteName,
+		"provider", providerName,
+		"templateHandle", templateHandle)
+
+	// 2. Get the Actual Template
+	slog.Debug("createDelegate: fetching LLM provider template",
+		"route", p.metadata.RouteName,
+		"provider", providerName,
+		"templateHandle", templateHandle,
+		"resourceType", ResourceTypeLlmProviderTemplate)
+
+	templateResource, err := store.GetResourceByIDAndType(templateHandle, ResourceTypeLlmProviderTemplate)
+	if err != nil {
+		slog.Error("createDelegate: failed to get LLM provider template",
+			"route", p.metadata.RouteName,
+			"provider", providerName,
+			"templateHandle", templateHandle,
+			"error", err)
 		return nil, err
 	}
 
-	// 2. Get the Actual Template
-	templateResource, err := store.GetResourceByIDAndType(templateHandle, ResourceTypeLlmProviderTemplate)
-	if err != nil {
-		return nil, err
+	if templateResource == nil {
+		slog.Error("createDelegate: LLM provider template not found",
+			"route", p.metadata.RouteName,
+			"provider", providerName,
+			"templateHandle", templateHandle)
+		return nil, nil
 	}
 
 	// 3. Transform LLM limits into advanced-ratelimit parameters
+	slog.Debug("createDelegate: transforming parameters",
+		"route", p.metadata.RouteName,
+		"provider", providerName,
+		"templateHandle", templateHandle)
+
 	rlParams := transformToRatelimitParams(params, templateResource.Resource)
 
+	slog.Debug("createDelegate: parameters transformed",
+		"route", p.metadata.RouteName,
+		"provider", providerName,
+		"quotasCount", len(rlParams["quotas"].([]interface{})))
+
 	// 4. Create the delegate instance
+	slog.Debug("createDelegate: creating advanced-ratelimit policy",
+		"route", p.metadata.RouteName,
+		"provider", providerName)
+
 	delegate, err := ratelimit.GetPolicy(p.metadata, rlParams)
 	if err != nil {
+		slog.Error("createDelegate: failed to create advanced-ratelimit policy",
+			"route", p.metadata.RouteName,
+			"provider", providerName,
+			"error", err)
 		return nil, err
 	}
+
+	slog.Debug("createDelegate: successfully created delegate",
+		"route", p.metadata.RouteName,
+		"provider", providerName)
 
 	return delegate, nil
 }
 
 // transformToRatelimitParams converts LLM-specific parameters to the advanced-ratelimit structure.
 func transformToRatelimitParams(params map[string]interface{}, template map[string]interface{}) map[string]interface{} {
+	slog.Debug("transformToRatelimitParams: starting parameter transformation",
+		"params", params)
+
 	var quotas []interface{}
 
 	addQuota := func(name string, limitsKey string, templateKey string) {
@@ -209,6 +335,11 @@ func transformToRatelimitParams(params map[string]interface{}, template map[stri
 			rlParams[key] = val
 		}
 	}
+
+	slog.Debug("transformToRatelimitParams: completed transformation",
+		"quotasCount", len(quotas),
+		"hasAlgorithm", rlParams["algorithm"] != nil,
+		"hasBackend", rlParams["backend"] != nil)
 
 	return rlParams
 }
