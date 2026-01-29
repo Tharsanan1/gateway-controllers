@@ -14,14 +14,14 @@
  *  limitations under the License.
  *
  */
- 
+
 package fixedwindow
 
 import (
 	"context"
 	"fmt"
 
-	"github.com/wso2/gateway-controllers/policies/advanced-ratelimit/limiter"
+	"github.com/tharsanan1/gateway-controllers/policies/advanced-ratelimit/limiter"
 )
 
 // MultiLimiter supports multiple concurrent rate limit policies

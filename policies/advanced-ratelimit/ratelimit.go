@@ -14,7 +14,7 @@
  *  limitations under the License.
  *
  */
- 
+
 package ratelimit
 
 import (
@@ -30,10 +30,10 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	_ "github.com/tharsanan1/gateway-controllers/policies/advanced-ratelimit/algorithms/fixedwindow" // Register Fixed Window algorithm
+	_ "github.com/tharsanan1/gateway-controllers/policies/advanced-ratelimit/algorithms/gcra"        // Register GCRA algorithm
+	"github.com/tharsanan1/gateway-controllers/policies/advanced-ratelimit/limiter"
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
-	_ "github.com/wso2/gateway-controllers/policies/advanced-ratelimit/algorithms/fixedwindow" // Register Fixed Window algorithm
-	_ "github.com/wso2/gateway-controllers/policies/advanced-ratelimit/algorithms/gcra"        // Register GCRA algorithm
-	"github.com/wso2/gateway-controllers/policies/advanced-ratelimit/limiter"
 )
 
 // contextKey is used for storing values in context

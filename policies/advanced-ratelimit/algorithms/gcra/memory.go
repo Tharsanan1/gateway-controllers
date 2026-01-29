@@ -14,7 +14,7 @@
  *  limitations under the License.
  *
  */
- 
+
 package gcra
 
 import (
@@ -24,7 +24,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wso2/gateway-controllers/policies/advanced-ratelimit/limiter"
+	"github.com/tharsanan1/gateway-controllers/policies/advanced-ratelimit/limiter"
 )
 
 // tatEntry stores TAT with expiration time

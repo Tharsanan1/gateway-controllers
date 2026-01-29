@@ -14,13 +14,13 @@
  *  limitations under the License.
  *
  */
- 
+
 package gcra
 
 import (
 	"fmt"
 
-	"github.com/wso2/gateway-controllers/policies/advanced-ratelimit/limiter"
+	"github.com/tharsanan1/gateway-controllers/policies/advanced-ratelimit/limiter"
 )
 
 func init() {

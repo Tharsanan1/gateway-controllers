@@ -14,7 +14,7 @@
  *  limitations under the License.
  *
  */
- 
+
 package fixedwindow
 
 import (
@@ -23,7 +23,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wso2/gateway-controllers/policies/advanced-ratelimit/limiter"
+	"github.com/tharsanan1/gateway-controllers/policies/advanced-ratelimit/limiter"
 )
 
 // windowEntry stores the request count and window start time

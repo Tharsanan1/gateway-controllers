@@ -14,7 +14,7 @@
  *  limitations under the License.
  *
  */
- 
+
 package fixedwindow
 
 import (
@@ -25,7 +25,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"github.com/wso2/gateway-controllers/policies/advanced-ratelimit/limiter"
+	"github.com/tharsanan1/gateway-controllers/policies/advanced-ratelimit/limiter"
 )
 
 // RedisLimiter implements fixed window rate limiting with Redis backend

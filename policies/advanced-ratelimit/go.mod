@@ -1,4 +1,4 @@
-module github.com/Tharsanan1/gateway-controllers/policies/advanced-ratelimit
+module github.com/tharsanan1/gateway-controllers/policies/advanced-ratelimit
 
 go 1.25.1
 
