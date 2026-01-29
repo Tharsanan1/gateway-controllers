@@ -339,7 +339,8 @@ func transformToRatelimitParams(params map[string]interface{}, template map[stri
 	slog.Debug("transformToRatelimitParams: completed transformation",
 		"quotasCount", len(quotas),
 		"hasAlgorithm", rlParams["algorithm"] != nil,
-		"hasBackend", rlParams["backend"] != nil)
+		"hasBackend", rlParams["backend"] != nil,
+		"quotas", quotas)
 
 	return rlParams
 }

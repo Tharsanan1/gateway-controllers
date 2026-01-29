@@ -292,6 +292,16 @@ func GetPolicy(
 		}
 	}
 
+	// Log quota details including cost extraction status
+	for i, q := range quotas {
+		slog.Debug("Quota configuration",
+			"index", i,
+			"name", q.Name,
+			"costExtractionEnabled", q.CostExtractionEnabled,
+			"hasCostExtractor", q.CostExtractor != nil,
+			"hasResponsePhaseSources", q.CostExtractor != nil && q.CostExtractor.HasResponsePhaseSources())
+	}
+
 	slog.Debug("Rate limit policy created successfully",
 		"route", routeName,
 		"backend", backend,
