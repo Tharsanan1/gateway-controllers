@@ -98,11 +98,33 @@ func (p *TokenBasedRateLimitPolicy) OnResponse(
 }
 
 // resolveDelegate ensures an advanced-ratelimit instance exists for the given provider.
+// This method is thread-safe and uses LoadOrStore to prevent race conditions when
+// multiple goroutines attempt to create a delegate for the same provider simultaneously.
 func (p *TokenBasedRateLimitPolicy) resolveDelegate(providerName string, params map[string]interface{}) (policy.Policy, error) {
+	// Fast path: check if delegate already exists
 	if val, ok := p.delegates.Load(providerName); ok {
 		return val.(policy.Policy), nil
 	}
 
+	// Slow path: create the delegate (expensive operation)
+	delegate, err := p.createDelegate(providerName, params)
+	if err != nil {
+		return nil, err
+	}
+
+	// Atomically store if not exists, or return the existing one
+	// This ensures only one delegate is created per provider even with concurrent access
+	if existing, loaded := p.delegates.LoadOrStore(providerName, delegate); loaded {
+		// Another goroutine already stored a delegate, use that one
+		return existing.(policy.Policy), nil
+	}
+
+	return delegate, nil
+}
+
+// createDelegate creates a new advanced-ratelimit delegate for the given provider.
+// This involves fetching resources from the store and transforming parameters.
+func (p *TokenBasedRateLimitPolicy) createDelegate(providerName string, params map[string]interface{}) (policy.Policy, error) {
 	store := policy.GetLazyResourceStoreInstance()
 
 	// 1. Get Provider-to-Template Mapping
@@ -131,7 +153,6 @@ func (p *TokenBasedRateLimitPolicy) resolveDelegate(providerName string, params 
 		return nil, err
 	}
 
-	p.delegates.Store(providerName, delegate)
 	return delegate, nil
 }
 
