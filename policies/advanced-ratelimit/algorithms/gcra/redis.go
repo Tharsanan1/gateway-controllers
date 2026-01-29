@@ -21,6 +21,7 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -71,9 +72,22 @@ func (r *RedisLimiter) AllowN(ctx context.Context, key string, n int64) (*limite
 	now := r.clock.Now()
 	fullKey := r.keyPrefix + key
 
+	slog.Debug("GCRA(Redis): checking rate limit",
+		"key", key,
+		"fullKey", fullKey,
+		"cost", n,
+		"now", now)
+
 	emissionInterval := r.policy.EmissionInterval()
 	burstAllowance := r.policy.BurstAllowance()
 	expirationSeconds := int64((r.policy.Duration + burstAllowance).Seconds())
+
+	slog.Debug("GCRA(Redis): executing Lua script",
+		"key", key,
+		"fullKey", fullKey,
+		"emissionInterval", emissionInterval,
+		"burstAllowance", burstAllowance,
+		"burst", r.policy.Burst)
 
 	// Execute Lua script atomically
 	result, err := r.script.Run(ctx, r.client,
@@ -123,6 +137,13 @@ func (r *RedisLimiter) AllowN(ctx context.Context, key string, n int64) (*limite
 	resetNanos := values[2].(int64)
 	retryAfterNanos := values[3].(int64)
 	fullQuotaAtNanos := values[4].(int64)
+
+	slog.Debug("GCRA(Redis): script execution result",
+		"key", key,
+		"fullKey", fullKey,
+		"allowed", allowed,
+		"remaining", remaining,
+		"reset", time.Unix(0, resetNanos))
 
 	return &limiter.Result{
 		Allowed:     allowed,

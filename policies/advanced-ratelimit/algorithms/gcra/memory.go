@@ -19,6 +19,7 @@ package gcra
 
 import (
 	"context"
+	"log/slog"
 	"math"
 	"sync"
 	"time"
@@ -84,6 +85,13 @@ func (m *MemoryLimiter) AllowN(ctx context.Context, key string, n int64) (*limit
 
 	now := m.clock.Now()
 
+	slog.Debug("GCRA: checking rate limit",
+		"key", key,
+		"cost", n,
+		"now", now,
+		"limit", m.policy.Limit,
+		"burst", m.policy.Burst)
+
 	// Get current TAT (Theoretical Arrival Time) from map
 	var tat time.Time
 	entry, exists := m.data[key]
@@ -102,6 +110,12 @@ func (m *MemoryLimiter) AllowN(ctx context.Context, key string, n int64) (*limit
 	emissionInterval := m.policy.EmissionInterval()
 	burstAllowance := m.policy.BurstAllowance()
 
+	slog.Debug("GCRA: calculated parameters",
+		"key", key,
+		"tat", tat,
+		"emissionInterval", emissionInterval,
+		"burstAllowance", burstAllowance)
+
 	// GCRA Algorithm Step 3: Calculate the earliest time this request can be allowed
 	allowAt := tat.Add(-burstAllowance)
 
@@ -111,6 +125,13 @@ func (m *MemoryLimiter) AllowN(ctx context.Context, key string, n int64) (*limit
 		// Request denied - calculate retry after
 		retryAfter := allowAt.Sub(now)
 		remaining := m.calculateRemaining(tat, now, emissionInterval, burstAllowance)
+
+		slog.Debug("GCRA: request denied",
+			"key", key,
+			"now", now,
+			"allowAt", allowAt,
+			"retryAfter", retryAfter,
+			"remaining", remaining)
 
 		// Full quota available when TAT <= now
 		fullQuotaAt := tat
@@ -164,6 +185,12 @@ func (m *MemoryLimiter) AllowN(ctx context.Context, key string, n int64) (*limit
 
 	// GCRA Algorithm Step 6: Calculate remaining requests
 	remaining = m.calculateRemaining(newTAT, now, emissionInterval, burstAllowance)
+
+	slog.Debug("GCRA: request allowed",
+		"key", key,
+		"cost", n,
+		"newTAT", newTAT,
+		"remaining", remaining)
 
 	// Full quota available when newTAT <= now
 	fullQuotaAt := newTAT

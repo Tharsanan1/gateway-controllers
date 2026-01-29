@@ -36,6 +36,13 @@ import (
 	"github.com/wso2/gateway-controllers/policies/advanced-ratelimit/limiter"
 )
 
+// contextKey is used for storing values in context
+type contextKey string
+
+const (
+	requestIDKey contextKey = "request_id"
+)
+
 // memoryLimiterCache caches memory-backed limiters to preserve state across xDS rebuilds.
 // Only memory backend limiters are cached; Redis-backed limiters maintain state externally.
 var memoryLimiterCache sync.Map // map[string]limiter.Limiter
@@ -89,6 +96,11 @@ func GetPolicy(
 	metadata policy.PolicyMetadata,
 	params map[string]interface{},
 ) (policy.Policy, error) {
+	slog.Debug("Creating rate limit policy",
+		"route", metadata.RouteName,
+		"apiName", metadata.APIName,
+		"apiVersion", metadata.APIVersion)
+
 	// Store route name for default key
 	routeName := metadata.RouteName
 	if routeName == "" {
@@ -158,6 +170,11 @@ func GetPolicy(
 	// Initialize limiters for each quota based on backend
 	var redisClient *redis.Client
 	redisFailOpen := true
+
+	slog.Debug("Initializing rate limiter backend",
+		"backend", backend,
+		"algorithm", algorithm,
+		"quotaCount", len(quotas))
 
 	if backend == "redis" {
 		// Parse Redis configuration
@@ -275,6 +292,12 @@ func GetPolicy(
 		}
 	}
 
+	slog.Debug("Rate limit policy created successfully",
+		"route", routeName,
+		"backend", backend,
+		"algorithm", algorithm,
+		"quotaCount", len(quotas))
+
 	// Return configured policy instance
 	return &RateLimitPolicy{
 		quotas:         quotas,
@@ -338,6 +361,13 @@ func (p *RateLimitPolicy) OnRequest(
 	ctx *policy.RequestContext,
 	params map[string]interface{},
 ) policy.RequestAction {
+	slog.Debug("Rate limit check started",
+		"route", p.routeName,
+		"apiName", p.apiName,
+		"apiVersion", p.apiVersion,
+		"quotaCount", len(p.quotas),
+		"backend", p.backend)
+
 	var quotaResults []quotaResult
 	var quotaKeys = make(map[string]string) // Store keys for response phase
 
@@ -352,19 +382,36 @@ func (p *RateLimitPolicy) OnRequest(
 		}
 		quotaKeys[quotaName] = key
 
+		slog.Debug("Rate limit key extracted",
+			"quota", quotaName,
+			"key", key,
+			"keyComponents", len(q.KeyExtraction))
+
 		// If cost extraction is enabled, handle based on whether we have request-phase or response-phase sources
 		if q.CostExtractionEnabled && q.CostExtractor != nil {
 			// Check if this quota has request-phase sources (can be processed now)
 			if q.CostExtractor.HasRequestPhaseSources() {
+				slog.Debug("Processing request-phase cost extraction",
+					"quota", quotaName,
+					"key", key)
+
 				// Extract cost from request (headers, metadata, or body)
 				requestCost, extracted := q.CostExtractor.ExtractRequestCost(ctx)
 				if !extracted {
 					slog.Debug("Request cost extraction failed, using default",
 						"key", key, "quota", quotaName, "defaultCost", requestCost)
+				} else {
+					slog.Debug("Request cost extracted",
+						"quota", quotaName,
+						"key", key,
+						"cost", requestCost)
 				}
 
 				// Clamp cost to minimum of 0
 				if requestCost < 0 {
+					slog.Debug("Request cost negative, clamping to 0",
+						"quota", quotaName,
+						"originalCost", requestCost)
 					requestCost = 0
 				}
 
@@ -381,9 +428,21 @@ func (p *RateLimitPolicy) OnRequest(
 				}
 
 				if !result.Allowed {
-					slog.Debug("Rate limit exceeded", "key", key, "cost", cost, "quota", quotaName)
+					slog.Debug("Rate limit exceeded",
+						"key", key,
+						"cost", cost,
+						"quota", quotaName,
+						"remaining", result.Remaining,
+						"limit", result.Limit)
 					return p.buildRateLimitResponse(result, quotaName, quotaResults)
 				}
+
+				slog.Debug("Rate limit check passed",
+					"quota", quotaName,
+					"key", key,
+					"cost", cost,
+					"remaining", result.Remaining,
+					"limit", result.Limit)
 
 				quotaResults = append(quotaResults, quotaResult{
 					QuotaName: quotaName,
@@ -460,6 +519,11 @@ func (p *RateLimitPolicy) OnResponse(
 	ctx *policy.ResponseContext,
 	params map[string]interface{},
 ) policy.ResponseAction {
+	slog.Debug("Processing rate limit response phase",
+		"route", p.routeName,
+		"status", ctx.ResponseStatus,
+		"quotaCount", len(p.quotas))
+
 	// Retrieve stored keys for cost extraction
 	quotaKeysRaw, hasKeys := ctx.Metadata[rateLimitKeysKey]
 	quotaKeys := make(map[string]string)
@@ -497,6 +561,9 @@ func (p *RateLimitPolicy) OnResponse(
 
 		// Handle post-response cost extraction for quotas that have it enabled
 		if q.CostExtractionEnabled && q.CostExtractor != nil && q.CostExtractor.HasResponsePhaseSources() {
+			slog.Debug("Processing response-phase cost extraction",
+				"quota", quotaName)
+
 			key := quotaKeys[quotaName]
 			if key == "" {
 				slog.Warn("Rate limit key not found for cost extraction", "quota", quotaName)
@@ -593,11 +660,17 @@ func (p *RateLimitPolicy) getMostRestrictiveResult(results []*limiter.Result) *l
 // extractQuotaKey builds the rate limit key from quota's key extraction components
 func (p *RateLimitPolicy) extractQuotaKey(ctx *policy.RequestContext, q *QuotaRuntime) string {
 	if len(q.KeyExtraction) == 0 {
+		slog.Debug("No key extraction configured, using route name",
+			"routeName", p.routeName)
 		return p.routeName
 	}
 
 	if len(q.KeyExtraction) == 1 {
-		return p.extractKeyComponent(ctx, q.KeyExtraction[0])
+		key := p.extractKeyComponent(ctx, q.KeyExtraction[0])
+		slog.Debug("Single component key extracted",
+			"type", q.KeyExtraction[0].Type,
+			"key", key)
+		return key
 	}
 
 	// Multiple components - join with ':' in the order specified
@@ -606,7 +679,11 @@ func (p *RateLimitPolicy) extractQuotaKey(ctx *policy.RequestContext, q *QuotaRu
 		part := p.extractKeyComponent(ctx, comp)
 		parts = append(parts, part)
 	}
-	return strings.Join(parts, ":")
+	key := strings.Join(parts, ":")
+	slog.Debug("Multi-component key extracted",
+		"componentCount", len(q.KeyExtraction),
+		"key", key)
+	return key
 }
 
 // extractKeyComponent extracts a single component value
@@ -660,6 +737,8 @@ func (p *RateLimitPolicy) extractKeyComponent(ctx *policy.RequestContext, comp K
 			slog.Error("Failed to get CEL evaluator for key extraction", "error", err)
 			return "_cel_error_"
 		}
+		slog.Debug("Evaluating CEL expression for key extraction",
+			"expression", comp.Expression)
 		result, err := evaluator.EvaluateKeyExpression(comp.Expression, ctx, p.routeName)
 		if err != nil {
 			slog.Warn("CEL key extraction failed, using placeholder", "expression", comp.Expression, "error", err)

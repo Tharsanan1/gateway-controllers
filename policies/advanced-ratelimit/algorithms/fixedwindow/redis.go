@@ -75,6 +75,13 @@ func (r *RedisLimiter) AllowN(ctx context.Context, key string, n int64) (*limite
 	// e.g., "ratelimit:v1:user123:1704067200000000000"
 	redisKey := fmt.Sprintf("%s%s:%d", r.keyPrefix, key, windowStart.UnixNano())
 
+	slog.Debug("FixedWindow(Redis): checking rate limit",
+		"key", key,
+		"redisKey", redisKey,
+		"cost", n,
+		"windowStart", windowStart,
+		"windowEnd", windowEnd)
+
 	var newCount int64
 	var err error
 
@@ -123,6 +130,14 @@ func (r *RedisLimiter) AllowN(ctx context.Context, key string, n int64) (*limite
 	} else {
 		remaining = 0
 	}
+
+	slog.Debug("FixedWindow(Redis): rate limit check result",
+		"key", key,
+		"redisKey", redisKey,
+		"allowed", allowed,
+		"newCount", newCount,
+		"limit", r.policy.Limit,
+		"remaining", remaining)
 
 	// Build result
 	result := &limiter.Result{

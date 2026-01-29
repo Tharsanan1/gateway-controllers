@@ -19,6 +19,7 @@ package fixedwindow
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -86,6 +87,12 @@ func (m *MemoryLimiter) AllowN(ctx context.Context, key string, n int64) (*limit
 	windowStart := m.policy.WindowStart(now)
 	windowEnd := m.policy.WindowEnd(now)
 
+	slog.Debug("FixedWindow: checking rate limit",
+		"key", key,
+		"cost", n,
+		"windowStart", windowStart,
+		"windowEnd", windowEnd)
+
 	// Get current entry or initialize new one
 	entry, exists := m.data[key]
 
@@ -120,6 +127,14 @@ func (m *MemoryLimiter) AllowN(ctx context.Context, key string, n int64) (*limit
 			expiration:  windowEnd.Add(time.Minute), // Keep for 1 minute after window ends
 		}
 	}
+
+	slog.Debug("FixedWindow: rate limit check result",
+		"key", key,
+		"allowed", allowed,
+		"currentCount", currentCount,
+		"newCount", newCount,
+		"limit", m.policy.Limit,
+		"remaining", remaining)
 
 	// Build result
 	result := &limiter.Result{
