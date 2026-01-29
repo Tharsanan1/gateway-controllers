@@ -27,7 +27,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"github.com/tharsanan1/gateway-controllers/policies/advanced-ratelimit/limiter"
+	"github.com/Tharsanan1/gateway-controllers/policies/advanced-ratelimit/limiter"
 )
 
 // RedisLimiter implements GCRA rate limiting with Redis backend

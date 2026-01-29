@@ -23,7 +23,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tharsanan1/gateway-controllers/policies/advanced-ratelimit/limiter"
+	"github.com/Tharsanan1/gateway-controllers/policies/advanced-ratelimit/limiter"
 )
 
 // windowEntry stores the request count and window start time

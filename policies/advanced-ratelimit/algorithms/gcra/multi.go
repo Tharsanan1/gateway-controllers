@@ -21,7 +21,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/tharsanan1/gateway-controllers/policies/advanced-ratelimit/limiter"
+	"github.com/Tharsanan1/gateway-controllers/policies/advanced-ratelimit/limiter"
 )
 
 // MultiLimiter supports multiple concurrent rate limit policies

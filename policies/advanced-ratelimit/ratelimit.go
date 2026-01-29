@@ -30,9 +30,9 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	_ "github.com/tharsanan1/gateway-controllers/policies/advanced-ratelimit/algorithms/fixedwindow" // Register Fixed Window algorithm
-	_ "github.com/tharsanan1/gateway-controllers/policies/advanced-ratelimit/algorithms/gcra"        // Register GCRA algorithm
-	"github.com/tharsanan1/gateway-controllers/policies/advanced-ratelimit/limiter"
+	_ "github.com/Tharsanan1/gateway-controllers/policies/advanced-ratelimit/algorithms/fixedwindow" // Register Fixed Window algorithm
+	_ "github.com/Tharsanan1/gateway-controllers/policies/advanced-ratelimit/algorithms/gcra"        // Register GCRA algorithm
+	"github.com/Tharsanan1/gateway-controllers/policies/advanced-ratelimit/limiter"
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 )
 
