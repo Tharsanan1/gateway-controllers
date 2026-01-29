@@ -19,6 +19,7 @@
 package tokenbasedratelimit
 
 import (
+	"fmt"
 	"log/slog"
 	"sync"
 
@@ -282,13 +283,17 @@ func (p *TokenBasedRateLimitPolicy) createDelegate(providerName string, params m
 // transformToRatelimitParams converts LLM-specific parameters to the advanced-ratelimit structure.
 func transformToRatelimitParams(params map[string]interface{}, template map[string]interface{}) map[string]interface{} {
 	slog.Debug("transformToRatelimitParams: starting parameter transformation",
-		"params", params)
+		"params", params,
+		"template", template)
 
 	var quotas []interface{}
 
 	addQuota := func(name string, limitsKey string, templateKey string) {
 		limits := params[limitsKey]
 		if limits == nil {
+			slog.Debug("addQuota: no limits found, skipping",
+				"name", name,
+				"limitsKey", limitsKey)
 			return
 		}
 
@@ -301,10 +306,29 @@ func transformToRatelimitParams(params map[string]interface{}, template map[stri
 		}
 
 		if template != nil {
+			slog.Debug("addQuota: looking for cost extraction config",
+				"name", name,
+				"templateKey", templateKey)
+			
 			if spec, ok := template["configuration"].(map[string]interface{}); ok {
+				slog.Debug("addQuota: found configuration section",
+					"name", name)
+				
 				if specData, ok := spec["spec"].(map[string]interface{}); ok {
+					slog.Debug("addQuota: found spec section",
+						"name", name,
+						"availableKeys", getMapKeys(specData))
+					
 					if usage, ok := specData[templateKey].(map[string]interface{}); ok {
+						slog.Debug("addQuota: found usage section",
+							"name", name,
+							"templateKey", templateKey)
+						
 						if path, ok := usage["identifier"].(string); ok && path != "" {
+							slog.Debug("addQuota: adding cost extraction config",
+								"name", name,
+								"path", path)
+							
 							quota["costExtraction"] = map[string]interface{}{
 								"enabled": true,
 								"sources": []interface{}{
@@ -314,10 +338,29 @@ func transformToRatelimitParams(params map[string]interface{}, template map[stri
 									},
 								},
 							}
+						} else {
+							slog.Debug("addQuota: identifier not found or empty",
+								"name", name,
+								"templateKey", templateKey)
 						}
+					} else {
+						slog.Debug("addQuota: templateKey not found in spec",
+							"name", name,
+							"templateKey", templateKey)
 					}
+				} else {
+					slog.Debug("addQuota: spec section not found or invalid type",
+						"name", name,
+						"specType", fmt.Sprintf("%T", spec["spec"]))
 				}
+			} else {
+				slog.Debug("addQuota: configuration section not found or invalid type",
+					"name", name,
+					"configType", fmt.Sprintf("%T", template["configuration"]))
 			}
+		} else {
+			slog.Debug("addQuota: template is nil",
+				"name", name)
 		}
 		quotas = append(quotas, quota)
 	}
@@ -360,4 +403,13 @@ func convertLimits(rawLimits interface{}) []interface{} {
 		}
 	}
 	return converted
+}
+
+// getMapKeys returns the keys of a map as a slice of strings
+func getMapKeys(m map[string]interface{}) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }
