@@ -210,6 +210,27 @@ func (m *MemoryLimiter) AllowN(ctx context.Context, key string, n int64) (*limit
 	}, nil
 }
 
+// GetAvailable returns the available tokens for the given key without consuming
+func (m *MemoryLimiter) GetAvailable(ctx context.Context, key string) (int64, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	now := m.clock.Now()
+	emissionInterval := m.policy.EmissionInterval()
+	burstAllowance := m.policy.BurstAllowance()
+
+	// Get the Theoretical Arrival Time (TAT) for this key
+	tat, exists := m.data[key]
+	if !exists || now.After(tat.expiration) {
+		// No previous request or expired - full burst capacity available
+		return m.policy.Burst, nil
+	}
+
+	// Calculate remaining based on current TAT
+	remaining := m.calculateRemaining(tat.tat, now, emissionInterval, burstAllowance)
+	return remaining, nil
+}
+
 // calculateRemaining computes how many requests can still be made
 // Formula: remaining = burst - ceil((tat - now) / emissionInterval)
 func (m *MemoryLimiter) calculateRemaining(tat, now time.Time, emissionInterval, burstAllowance time.Duration) int64 {

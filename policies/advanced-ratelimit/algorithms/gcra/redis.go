@@ -22,6 +22,8 @@ import (
 	_ "embed"
 	"fmt"
 	"log/slog"
+	"math"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -157,6 +159,34 @@ func (r *RedisLimiter) AllowN(ctx context.Context, key string, n int64) (*limite
 	}, nil
 }
 
+// GetAvailable returns the available tokens for the given key without consuming
+// For GCRA, we use a Lua script to compute remaining without updating state
+func (r *RedisLimiter) GetAvailable(ctx context.Context, key string) (int64, error) {
+	now := time.Now()
+	emissionInterval := r.policy.EmissionInterval()
+	burstAllowance := r.policy.BurstAllowance()
+
+	// Get current TAT from Redis
+	tatBytes, err := r.client.Get(ctx, key).Bytes()
+	if err == redis.Nil {
+		// No previous request - full burst capacity available
+		return r.policy.Burst, nil
+	} else if err != nil {
+		return 0, fmt.Errorf("redis get failed: %w", err)
+	}
+
+	tatNanos, err := strconv.ParseInt(string(tatBytes), 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse TAT: %w", err)
+	}
+
+	tat := time.Unix(0, tatNanos)
+
+	// Calculate remaining capacity without modifying TAT
+	remaining := calculateRemainingGCRA(tat, now, emissionInterval, burstAllowance, r.policy.Burst)
+	return remaining, nil
+}
+
 // Close closes the Redis connection
 // Safe to call multiple times
 func (r *RedisLimiter) Close() error {
@@ -165,4 +195,25 @@ func (r *RedisLimiter) Close() error {
 		err = r.client.Close()
 	})
 	return err
+}
+
+// calculateRemainingGCRA computes how many requests can still be made
+// Formula: remaining = burst - ceil((tat - now) / emissionInterval)
+func calculateRemainingGCRA(tat, now time.Time, emissionInterval, burstAllowance time.Duration, burst int64) int64 {
+	if tat.Before(now) || tat.Equal(now) {
+		// All burst capacity available
+		return burst
+	}
+
+	usedBurst := tat.Sub(now)
+	if usedBurst > burstAllowance {
+		return 0
+	}
+
+	remaining := burst - int64(math.Ceil(float64(usedBurst)/float64(emissionInterval)))
+	if remaining < 0 {
+		return 0
+	}
+
+	return remaining
 }

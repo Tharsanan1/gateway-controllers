@@ -503,8 +503,8 @@ func (p *RateLimitPolicy) OnRequest(
 			}
 
 			// Response-phase cost extraction: pre-check if quota is already exhausted
-			// Pre-check: if remaining quota is already <= 0, block the request
-			result, err := q.Limiter.AllowN(context.Background(), key, 0)
+			// Use GetAvailable to check remaining without consuming tokens
+			available, err := q.Limiter.GetAvailable(context.Background(), key)
 			if err != nil {
 				if p.backend == "redis" && p.redisFailOpen {
 					slog.Warn("Rate limit pre-check failed (fail-open)", "error", err, "key", key, "quota", quotaName)
@@ -514,18 +514,26 @@ func (p *RateLimitPolicy) OnRequest(
 				return p.buildRateLimitResponse(nil, quotaName, quotaResults)
 			}
 
-			// If remaining <= 0, quota is exhausted - block the request
-			if result != nil && result.Remaining <= 0 {
+			// If available <= 0, quota is exhausted - block the request
+			if available <= 0 {
 				slog.Debug("Cost extraction mode: quota exhausted, blocking request",
-					"key", key, "remaining", result.Remaining, "quota", quotaName)
+					"key", key, "available", available, "quota", quotaName)
+				// Build a result for the exhausted quota
+				result := &limiter.Result{
+					Allowed:   false,
+					Limit:     getLimitFromQuota(q),
+					Remaining: 0,
+				}
 				return p.buildRateLimitResponse(result, quotaName, quotaResults)
 			}
 
+			// Store a placeholder result for the response phase
+			// The actual consumption and result will be determined in OnResponse
 			quotaResults = append(quotaResults, quotaResult{
 				QuotaName: quotaName,
-				Result:    result,
+				Result:    nil, // Will be populated in OnResponse
 				Key:       key,
-				Duration:  result.Duration,
+				Duration:  getDurationFromQuota(q),
 			})
 			continue
 		}
@@ -1333,6 +1341,22 @@ func getDurationParam(params map[string]interface{}, key string, defaultVal time
 	}
 
 	return defaultVal
+}
+
+// getLimitFromQuota returns the limit from a quota's first limit config, or 0 if none
+func getLimitFromQuota(q *QuotaRuntime) int64 {
+	if len(q.Limits) > 0 {
+		return q.Limits[0].Limit
+	}
+	return 0
+}
+
+// getDurationFromQuota returns the duration from a quota's first limit config, or 0 if none
+func getDurationFromQuota(q *QuotaRuntime) time.Duration {
+	if len(q.Limits) > 0 {
+		return q.Limits[0].Duration
+	}
+	return 0
 }
 
 // getBaseCacheKey computes a stable hash key base for caching memory-backed limiters.

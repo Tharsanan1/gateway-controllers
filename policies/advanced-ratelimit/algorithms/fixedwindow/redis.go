@@ -160,6 +160,31 @@ func (r *RedisLimiter) AllowN(ctx context.Context, key string, n int64) (*limite
 	return result, nil
 }
 
+// GetAvailable returns the available tokens for the given key without consuming
+func (r *RedisLimiter) GetAvailable(ctx context.Context, key string) (int64, error) {
+	now := time.Now()
+	windowStart := r.policy.WindowStart(now)
+
+	// Use Redis key with window start
+	redisKey := fmt.Sprintf("%s%s:%d", r.keyPrefix, key, windowStart.Unix())
+
+	// Get current count from Redis
+	count, err := r.client.Get(ctx, redisKey).Int64()
+	if err == redis.Nil {
+		count = 0
+	} else if err != nil {
+		return 0, fmt.Errorf("redis get failed: %w", err)
+	}
+
+	// Calculate remaining
+	remaining := r.policy.Limit - count
+	if remaining < 0 {
+		remaining = 0
+	}
+
+	return remaining, nil
+}
+
 // Close releases resources (no-op for Redis as connections are managed externally)
 // Safe to call multiple times
 func (r *RedisLimiter) Close() error {
