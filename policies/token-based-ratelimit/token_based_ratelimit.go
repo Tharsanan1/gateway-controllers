@@ -23,7 +23,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"log/slog"
-	"strings"
 	"sync"
 	"time"
 
@@ -40,8 +39,9 @@ const (
 // TokenBasedRateLimitPolicy delegates LLM token-based rate limiting to advanced-ratelimit
 // by dynamically resolving cost extraction paths from provider templates.
 type TokenBasedRateLimitPolicy struct {
-	metadata  policy.PolicyMetadata
-	delegates sync.Map // map[string]policy.Policy (providerName -> advanced-ratelimit instance)
+	metadata          policy.PolicyMetadata
+	delegates         sync.Map // map[string]policy.Policy (providerName -> advanced-ratelimit instance)
+	delegateCacheKeys sync.Map // map[string]string (providerName -> cacheKey for template change detection)
 }
 
 // GetPolicy creates and initializes the token-based rate limit policy.
@@ -201,13 +201,26 @@ func (p *TokenBasedRateLimitPolicy) resolveDelegate(providerName string, params 
 		"templateHash", templateHash[:8],
 		"cacheKey", cacheKey)
 
-	// Fast path: check if delegate already exists for this template version
-	if val, ok := p.delegates.Load(cacheKey); ok {
-		slog.Debug("resolveDelegate: found existing delegate for template version (fast path)",
-			"route", p.metadata.RouteName,
-			"provider", providerName,
-			"templateHash", templateHash[:8])
-		return val.(policy.Policy), nil
+	// Fast path: check if delegate already exists for this provider
+	// We check using providerName as the key since that's what OnResponse uses
+	if existingDelegate, ok := p.delegates.Load(providerName); ok {
+		// Check if the existing delegate is for the current template version
+		// by comparing the stored cacheKey
+		if storedCacheKey, hasKey := p.delegateCacheKeys.Load(providerName); hasKey {
+			if storedCacheKey.(string) == cacheKey {
+				slog.Debug("resolveDelegate: found existing delegate for current template (fast path)",
+					"route", p.metadata.RouteName,
+					"provider", providerName,
+					"templateHash", templateHash[:8])
+				return existingDelegate.(policy.Policy), nil
+			}
+			// Template changed - continue to create new delegate
+			slog.Debug("resolveDelegate: template changed, creating new delegate",
+				"route", p.metadata.RouteName,
+				"provider", providerName,
+				"oldTemplateHash", storedCacheKey.(string)[:8],
+				"newTemplateHash", templateHash[:8])
+		}
 	}
 
 	slog.Debug("resolveDelegate: creating new delegate (slow path)",
@@ -226,53 +239,17 @@ func (p *TokenBasedRateLimitPolicy) resolveDelegate(providerName string, params 
 		return nil, err
 	}
 
-	// Atomically store if not exists, or return the existing one
-	// This ensures only one delegate is created per provider/template combo even with concurrent access
-	if existing, loaded := p.delegates.LoadOrStore(cacheKey, delegate); loaded {
-		// Another goroutine already stored a delegate, use that one
-		slog.Debug("resolveDelegate: another goroutine created delegate, using existing",
-			"route", p.metadata.RouteName,
-			"provider", providerName,
-			"templateHash", templateHash[:8])
-		return existing.(policy.Policy), nil
-	}
+	// Store the delegate with providerName as key (for OnResponse lookup)
+	// and store the cacheKey separately for template change detection
+	p.delegates.Store(providerName, delegate)
+	p.delegateCacheKeys.Store(providerName, cacheKey)
 
 	slog.Debug("resolveDelegate: successfully created and stored new delegate",
 		"route", p.metadata.RouteName,
 		"provider", providerName,
 		"templateHash", templateHash[:8])
 
-	// Clean up old delegates for this provider (with different template hashes)
-	// This prevents memory leaks when templates are updated frequently
-	p.cleanupOldDelegates(providerName, cacheKey)
-
 	return delegate, nil
-}
-
-// cleanupOldDelegates removes all cached delegates for a provider except the current one.
-// This should be called after successfully creating and storing a new delegate.
-func (p *TokenBasedRateLimitPolicy) cleanupOldDelegates(providerName string, currentCacheKey string) {
-	prefix := providerName + ":"
-	deletedCount := 0
-
-	p.delegates.Range(func(key, value interface{}) bool {
-		k := key.(string)
-		// Check if this key belongs to the same provider but is not the current one
-		if strings.HasPrefix(k, prefix) && k != currentCacheKey {
-			p.delegates.Delete(k)
-			deletedCount++
-			slog.Debug("cleanupOldDelegates: removed old delegate",
-				"provider", providerName,
-				"oldCacheKey", k)
-		}
-		return true
-	})
-
-	if deletedCount > 0 {
-		slog.Debug("cleanupOldDelegates: cleaned up old delegates",
-			"provider", providerName,
-			"deletedCount", deletedCount)
-	}
 }
 
 // createDelegate creates a new advanced-ratelimit delegate for the given provider.
