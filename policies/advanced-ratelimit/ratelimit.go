@@ -47,6 +47,15 @@ const (
 // Only memory backend limiters are cached; Redis-backed limiters maintain state externally.
 var memoryLimiterCache sync.Map // map[string]limiter.Limiter
 
+// baseKeyQuotaIndex tracks which quota keys exist for each base cache key.
+// This enables automatic cleanup of stale limiters when quota configurations change.
+// Structure: map[string]map[string]bool (baseKey -> set of quotaKeys)
+var baseKeyQuotaIndex sync.Map
+
+// baseKeyMutexes provides per-baseKey locking to prevent race conditions during cleanup.
+// Structure: map[string]*sync.Mutex
+var baseKeyMutexes sync.Map
+
 // KeyComponent represents a single component for building rate limit keys
 type KeyComponent struct {
 	Type       string // "header", "metadata", "ip", "apiname", "apiversion", "routename", "cel"
@@ -80,6 +89,7 @@ type RateLimitPolicy struct {
 	apiId          string         // From metadata, API identifier
 	apiName        string         // From metadata, API name for scope-based caching
 	apiVersion     string         // From metadata, API version
+	baseCacheKey   string         // Base cache key for tracking limiters in memory backend
 	statusCode     int
 	responseBody   string
 	responseFormat string
@@ -170,6 +180,7 @@ func GetPolicy(
 	// Initialize limiters for each quota based on backend
 	var redisClient *redis.Client
 	redisFailOpen := true
+	var baseCacheKey string // Set for memory backend to track limiters
 
 	slog.Debug("Initializing rate limiter backend",
 		"backend", backend,
@@ -243,9 +254,18 @@ func GetPolicy(
 			q.Limiter = rlLimiter
 		}
 	} else {
-		// Memory backend - create limiter per quota with caching
+		// Memory backend - create limiter per quota with caching and automatic cleanup
 		cleanupInterval := getDurationParam(params, "memory.cleanupInterval", 5*time.Minute)
 		baseCacheKey := getBaseCacheKey(routeName, apiName, algorithm, params)
+
+		// Get or create mutex for this baseKey to prevent race conditions
+		muIface, _ := baseKeyMutexes.LoadOrStore(baseCacheKey, &sync.Mutex{})
+		mu := muIface.(*sync.Mutex)
+		mu.Lock()
+		defer mu.Unlock()
+
+		// Track which quota keys are being used in this policy configuration
+		usedQuotaKeys := make(map[string]bool)
 
 		for i := range quotas {
 			q := &quotas[i]
@@ -258,14 +278,16 @@ func GetPolicy(
 				}
 			}
 
-			cacheKey := getQuotaCacheKey(baseCacheKey, apiName, q, i)
+			// Get the quota-specific cache key (includes quota name, limits, keyExtraction)
+			quotaCacheKey := getQuotaCacheKey(baseCacheKey, apiName, q, i)
+			usedQuotaKeys[quotaCacheKey] = true
 
 			// Try to get cached limiter
-			if cached, ok := memoryLimiterCache.Load(cacheKey); ok {
+			if cached, ok := memoryLimiterCache.Load(quotaCacheKey); ok {
 				q.Limiter = cached.(limiter.Limiter)
 				slog.Debug("Reusing cached memory limiter",
 					"route", routeName, "apiName", apiName,
-					"quota", q.Name, "cacheKey", cacheKey[:16])
+					"quota", q.Name, "cacheKey", quotaCacheKey[:16])
 			} else {
 				// Create new limiter
 				rlLimiter, err := limiter.CreateLimiter(limiter.Config{
@@ -283,13 +305,29 @@ func GetPolicy(
 				}
 
 				// Store in cache
-				memoryLimiterCache.Store(cacheKey, rlLimiter)
+				memoryLimiterCache.Store(quotaCacheKey, rlLimiter)
 				q.Limiter = rlLimiter
 				slog.Debug("Created and cached new memory limiter",
 					"route", routeName, "apiName", apiName,
-					"quota", q.Name, "cacheKey", cacheKey[:16])
+					"quota", q.Name, "cacheKey", quotaCacheKey[:16])
 			}
 		}
+
+		// Clean up stale limiters: quota keys that were previously used but are no longer in config
+		if previousQuotaKeys, ok := baseKeyQuotaIndex.Load(baseCacheKey); ok {
+			for oldQuotaKey := range previousQuotaKeys.(map[string]bool) {
+				if !usedQuotaKeys[oldQuotaKey] {
+					// This quota was removed or its configuration changed
+					memoryLimiterCache.Delete(oldQuotaKey)
+					slog.Debug("Cleaned up stale memory limiter",
+						"route", routeName, "apiName", apiName,
+						"cacheKey", oldQuotaKey[:16])
+				}
+			}
+		}
+
+		// Update the index with current quota keys for this baseKey
+		baseKeyQuotaIndex.Store(baseCacheKey, usedQuotaKeys)
 	}
 
 	// Log quota details including cost extraction status
@@ -315,6 +353,7 @@ func GetPolicy(
 		apiId:          apiId,
 		apiName:        apiName,
 		apiVersion:     apiVersion,
+		baseCacheKey:   baseCacheKey,
 		statusCode:     statusCode,
 		responseBody:   responseBody,
 		responseFormat: responseFormat,
