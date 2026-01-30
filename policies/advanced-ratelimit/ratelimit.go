@@ -640,9 +640,25 @@ func (p *RateLimitPolicy) OnResponse(
 
 			// Skip if cost is 0
 			if actualCost == 0 {
-				// Still include stored result for headers
+				// Still include stored result for headers if available
 				if stored, ok := storedResultsMap[quotaName]; ok && stored.Result != nil {
 					allQuotaResults = append(allQuotaResults, stored)
+				} else {
+					// For response-phase cost extraction with 0 cost, get current state
+					// Use GetAvailable to check remaining without consuming
+					available, err := q.Limiter.GetAvailable(context.Background(), key)
+					if err == nil {
+						allQuotaResults = append(allQuotaResults, quotaResult{
+							QuotaName: quotaName,
+							Result: &limiter.Result{
+								Allowed:   available > 0,
+								Limit:     getLimitFromQuota(q),
+								Remaining: available,
+							},
+							Key:      key,
+							Duration: getDurationFromQuota(q),
+						})
+					}
 				}
 				continue
 			}

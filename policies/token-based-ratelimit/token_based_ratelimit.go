@@ -398,14 +398,39 @@ func transformToRatelimitParams(params map[string]interface{}, template map[stri
 			if spec, ok := template["spec"].(map[string]interface{}); ok {
 				if usage, ok := spec[templateKey].(map[string]interface{}); ok {
 					if path, ok := usage["identifier"].(string); ok && path != "" {
+						// Map template location to cost extraction type
+						location, _ := usage["location"].(string)
+						sourceType := "response_body" // default
+						sourceConfig := map[string]interface{}{
+							"type": sourceType,
+						}
+
+						switch location {
+						case "header":
+							sourceType = "request_header"
+							sourceConfig["type"] = sourceType
+							sourceConfig["header"] = path
+						case "metadata":
+							sourceType = "metadata"
+							sourceConfig["type"] = sourceType
+							sourceConfig["key"] = path
+						case "payload":
+							// payload location uses response_body type with jsonPath
+							sourceConfig["jsonPath"] = path
+						default:
+							// For any other location, assume payload/response_body
+							sourceConfig["jsonPath"] = path
+						}
+
+						slog.Debug("addQuota: configured cost extraction",
+							"name", name,
+							"location", location,
+							"sourceType", sourceType,
+							"path", path)
+
 						quota["costExtraction"] = map[string]interface{}{
 							"enabled": true,
-							"sources": []interface{}{
-								map[string]interface{}{
-									"type":     "response_body",
-									"jsonPath": path,
-								},
-							},
+							"sources": []interface{}{sourceConfig},
 						}
 					}
 				}
