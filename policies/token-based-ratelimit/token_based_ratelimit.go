@@ -409,7 +409,7 @@ func transformToRatelimitParams(params map[string]interface{}, template map[stri
 						case "header":
 							sourceType = "request_header"
 							sourceConfig["type"] = sourceType
-							sourceConfig["header"] = path
+							sourceConfig["key"] = path
 						case "metadata":
 							sourceType = "metadata"
 							sourceConfig["type"] = sourceType
