@@ -3,7 +3,7 @@ module github.com/Tharsanan1/gateway-controllers/policies/token-based-ratelimit
 go 1.25.1
 
 require (
-	github.com/Tharsanan1/gateway-controllers/policies/advanced-ratelimit v0.1.20
+	github.com/Tharsanan1/gateway-controllers/policies/advanced-ratelimit v0.1.21
 	github.com/wso2/api-platform/sdk v0.3.8
 )
 
