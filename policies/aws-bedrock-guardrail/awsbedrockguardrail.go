@@ -45,6 +45,10 @@ const (
 
 var textCleanRegexCompiled = regexp.MustCompile(TextCleanRegex)
 
+type bedrockGuardrailClient interface {
+	ApplyGuardrail(ctx context.Context, params *bedrockruntime.ApplyGuardrailInput, optFns ...func(*bedrockruntime.Options)) (*bedrockruntime.ApplyGuardrailOutput, error)
+}
+
 // AWSBedrockGuardrailPolicy implements AWS Bedrock Guardrail validation
 type AWSBedrockGuardrailPolicy struct {
 	// Static configuration from params
@@ -63,6 +67,10 @@ type AWSBedrockGuardrailPolicy struct {
 	hasResponseParams bool
 	requestParams     AWSBedrockGuardrailPolicyParams
 	responseParams    AWSBedrockGuardrailPolicyParams
+
+	// Testing hooks for AWS interactions.
+	loadAWSConfigFunc    func(ctx context.Context, region string) (aws.Config, error)
+	newBedrockClientFunc func(cfg aws.Config) bedrockGuardrailClient
 }
 
 type AWSBedrockGuardrailPolicyParams struct {
@@ -85,6 +93,10 @@ func GetPolicy(
 		region:           getStringParam(params, "region"),
 		guardrailID:      getStringParam(params, "guardrailID"),
 		guardrailVersion: getStringParam(params, "guardrailVersion"),
+	}
+	p.loadAWSConfigFunc = p.loadAWSConfig
+	p.newBedrockClientFunc = func(cfg aws.Config) bedrockGuardrailClient {
+		return bedrockruntime.NewFromConfig(cfg)
 	}
 
 	// Optional AWS credentials
@@ -388,7 +400,12 @@ func (p *AWSBedrockGuardrailPolicy) validatePayload(payload []byte, params AWSBe
 	extractedValue = strings.TrimSpace(extractedValue)
 
 	// Create AWS config
-	awsCfg, err := p.loadAWSConfig(context.Background(), p.region)
+	loadConfig := p.loadAWSConfigFunc
+	if loadConfig == nil {
+		loadConfig = p.loadAWSConfig
+	}
+
+	awsCfg, err := loadConfig(context.Background(), p.region)
 	if err != nil {
 		if params.PassthroughOnError {
 			slog.Debug("AWSBedrockGuardrail: AWS config error, passthrough enabled", "error", err, "isResponse", isResponse)
@@ -552,7 +569,13 @@ func (p *AWSBedrockGuardrailPolicy) loadAWSConfigWithAssumeRole(ctx context.Cont
 // applyBedrockGuardrail calls AWS Bedrock Guardrail ApplyGuardrail API
 func (p *AWSBedrockGuardrailPolicy) applyBedrockGuardrail(ctx context.Context, awsCfg aws.Config, guardrailID, guardrailVersion, content string) (*bedrockruntime.ApplyGuardrailOutput, error) {
 	// Create Bedrock Runtime client
-	client := bedrockruntime.NewFromConfig(awsCfg)
+	newClient := p.newBedrockClientFunc
+	if newClient == nil {
+		newClient = func(cfg aws.Config) bedrockGuardrailClient {
+			return bedrockruntime.NewFromConfig(cfg)
+		}
+	}
+	client := newClient(awsCfg)
 
 	// Prepare ApplyGuardrail input
 	input := &bedrockruntime.ApplyGuardrailInput{
