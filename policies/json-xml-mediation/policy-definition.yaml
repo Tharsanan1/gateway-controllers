@@ -1,0 +1,20 @@
+name: json-xml-mediation
+version: v0.1.0
+description: |
+  Mediates payload format across backend boundaries by converting request bodies between
+  JSON and XML and automatically applying the reverse conversion on responses.
+
+parameters:
+  type: object
+  additionalProperties: false
+  required: ["upstreamFormat"]
+  properties:
+    upstreamFormat:
+      type: string
+      x-wso2-policy-advanced-param: false
+      description: Specifies the payload format expected by upstream; response conversion is applied in reverse automatically.
+      enum: ["xml", "json"]
+
+systemParameters:
+  type: object
+  properties: {}
