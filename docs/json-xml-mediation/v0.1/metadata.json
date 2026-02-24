@@ -1,0 +1,10 @@
+{
+  "name": "json-xml-mediation",
+  "displayName": "JSON XML Mediation",
+  "version": "0.1",
+  "provider": "WSO2",
+  "categories": [
+    "Transformation"
+  ],
+  "description": "Mediates payload format across backend boundaries by converting request bodies between JSON and XML and automatically applying the reverse conversion on responses."
+}
