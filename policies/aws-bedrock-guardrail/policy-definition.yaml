@@ -16,25 +16,29 @@ parameters:
       properties:
         jsonPath:
           type: string
+          x-wso2-policy-advanced-param: false
           description: |
             JSONPath expression to extract a specific value from JSON payload.
             If empty, validates the entire payload as a string.
             Examples: "$.messages", "$.data.content", "$.items[0].text"
-          default: ""
+          default: "$.messages"
         redactPII:
           type: boolean
+          x-wso2-policy-advanced-param: true
           description: |
             If true, redacts PII by replacing with "*****" (permanent, cannot be restored).
             If false (default), masks PII with placeholders that can be restored in responses.
           default: false
         passthroughOnError:
           type: boolean
+          x-wso2-policy-advanced-param: true
           description: |
             If true, allows requests to proceed if AWS Bedrock Guardrail API call fails.
             If false (default), blocks requests on API errors.
           default: false
         showAssessment:
           type: boolean
+          x-wso2-policy-advanced-param: true
           description: |
             If true, includes detailed assessment information from AWS Bedrock Guardrail in error responses.
             If false, returns minimal error information.
@@ -45,19 +49,22 @@ parameters:
       properties:
         jsonPath:
           type: string
+          x-wso2-policy-advanced-param: false
           description: |
             JSONPath expression to extract a specific value from JSON payload.
             If empty, validates the entire payload as a string.
             Examples: "$.messages", "$.data.content", "$.items[0].text"
-          default: ""
+          default: "$.messages"
         passthroughOnError:
           type: boolean
+          x-wso2-policy-advanced-param: true
           description: |
             If true, allows requests to proceed if AWS Bedrock Guardrail API call fails.
             If false (default), blocks requests on API errors.
           default: false
         showAssessment:
           type: boolean
+          x-wso2-policy-advanced-param: true
           description: |
             If true, includes detailed assessment information from AWS Bedrock Guardrail in error responses.
             If false, returns minimal error information.
