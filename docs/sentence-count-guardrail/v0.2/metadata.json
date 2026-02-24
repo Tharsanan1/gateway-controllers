@@ -7,5 +7,5 @@
     "Guardrails",
     "AI"
   ],
-  "description": "Validates the sentence count of request or response body content.\nSupports JSONPath extraction to validate specific fields within JSON payloads.\nCan be configured with min/max sentence count constraints and inverted logic.\nSupports separate configuration for request and response phases."
+  "description": "Validate sentence counts in request or response content using min/max limits, optional JSONPath extraction, and optional inverted logic."
 }

@@ -14,7 +14,7 @@
  *  limitations under the License.
  *
  */
- 
+
 package sentencecountguardrail
 
 import (
@@ -33,6 +33,7 @@ const (
 	GuardrailErrorCode = 422
 	TextCleanRegex     = "^\"|\"$"
 	SentenceSplitRegex = "[.!?]"
+	DefaultJSONPath    = "$.messages"
 )
 
 var (
@@ -62,8 +63,11 @@ func GetPolicy(
 ) (policy.Policy, error) {
 	p := &SentenceCountGuardrailPolicy{}
 
-	// Extract and parse request parameters if present
-	if requestParamsRaw, ok := params["request"].(map[string]interface{}); ok {
+	requestParamsRaw, hasRequest, err := getFlowParams(params, "request")
+	if err != nil {
+		return nil, err
+	}
+	if hasRequest {
 		requestParams, err := parseParams(requestParamsRaw)
 		if err != nil {
 			return nil, fmt.Errorf("invalid request parameters: %w", err)
@@ -72,8 +76,11 @@ func GetPolicy(
 		p.requestParams = requestParams
 	}
 
-	// Extract and parse response parameters if present
-	if responseParamsRaw, ok := params["response"].(map[string]interface{}); ok {
+	responseParamsRaw, hasResponse, err := getFlowParams(params, "response")
+	if err != nil {
+		return nil, err
+	}
+	if hasResponse {
 		responseParams, err := parseParams(responseParamsRaw)
 		if err != nil {
 			return nil, fmt.Errorf("invalid response parameters: %w", err)
@@ -92,9 +99,23 @@ func GetPolicy(
 	return p, nil
 }
 
+func getFlowParams(params map[string]interface{}, flow string) (map[string]interface{}, bool, error) {
+	raw, exists := params[flow]
+	if !exists {
+		return nil, false, nil
+	}
+	flowParams, ok := raw.(map[string]interface{})
+	if !ok {
+		return nil, false, fmt.Errorf("'%s' must be an object", flow)
+	}
+	return flowParams, true, nil
+}
+
 // parseParams parses and validates parameters from map to struct
 func parseParams(params map[string]interface{}) (SentenceCountGuardrailPolicyParams, error) {
-	var result SentenceCountGuardrailPolicyParams
+	result := SentenceCountGuardrailPolicyParams{
+		JsonPath: DefaultJSONPath,
+	}
 
 	// Validate and extract min parameter (required)
 	minRaw, ok := params["min"]
