@@ -28,12 +28,14 @@ parameters:
           default: ""
         invert:
           type: boolean
+          x-wso2-policy-advanced-param: true
           description: |
             If true, validation passes when schema validation FAILS (inverted logic).
             If false (default), validation passes when schema validation succeeds.
           default: false
         showAssessment:
           type: boolean
+          x-wso2-policy-advanced-param: true
           description: |
             If true, includes detailed validation error information in error responses.
             If false, returns minimal error information.
@@ -59,12 +61,14 @@ parameters:
           default: ""
         invert:
           type: boolean
+          x-wso2-policy-advanced-param: true
           description: |
             If true, validation passes when schema validation FAILS (inverted logic).
             If false (default), validation passes when schema validation succeeds.
           default: false
         showAssessment:
           type: boolean
+          x-wso2-policy-advanced-param: true
           description: |
             If true, includes detailed validation error information in error responses.
             If false, returns minimal error information.
