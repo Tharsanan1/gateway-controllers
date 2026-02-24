@@ -3,306 +3,361 @@ package basicauth
 import (
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
+	"strings"
 	"testing"
 
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 )
 
-func newBasicRequestContext(headers map[string][]string) *policy.RequestContext {
-	if headers == nil {
-		headers = map[string][]string{}
-	}
+func newRequestContext(headers map[string][]string) *policy.RequestContext {
 	return &policy.RequestContext{
 		SharedContext: &policy.SharedContext{
-			RequestID: "req-1",
-			Metadata:  map[string]interface{}{},
+			Metadata: map[string]interface{}{},
 		},
 		Headers: policy.NewHeaders(headers),
-		Method:  "GET",
-		Path:    "/api/resource",
 	}
 }
 
-func basicAuthHeader(username, password string) string {
-	creds := base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
-	return "Basic " + creds
+func encodeBasicCredentials(username, password string) string {
+	raw := username + ":" + password
+	return "Basic " + base64.StdEncoding.EncodeToString([]byte(raw))
 }
 
-func defaultParams() map[string]interface{} {
-	return map[string]interface{}{
-		"username": "admin",
-		"password": "secret",
+func parseErrorBody(t *testing.T, body []byte) map[string]string {
+	t.Helper()
+	var got map[string]string
+	if err := json.Unmarshal(body, &got); err != nil {
+		t.Fatalf("failed to unmarshal response body: %v", err)
 	}
+	return got
 }
 
-func TestBasicAuthPolicy_Mode(t *testing.T) {
-	p := &BasicAuthPolicy{}
-	got := p.Mode()
-	want := policy.ProcessingMode{
-		RequestHeaderMode:  policy.HeaderModeProcess,
-		RequestBodyMode:    policy.BodyModeSkip,
-		ResponseHeaderMode: policy.HeaderModeSkip,
-		ResponseBodyMode:   policy.BodyModeSkip,
+func assertImmediateResponse(t *testing.T, action policy.RequestAction, expectedStatus int) policy.ImmediateResponse {
+	t.Helper()
+	ir, ok := action.(policy.ImmediateResponse)
+	if !ok {
+		t.Fatalf("expected ImmediateResponse, got %T", action)
 	}
-	if got != want {
-		t.Fatalf("unexpected mode: got %+v, want %+v", got, want)
+	if ir.StatusCode != expectedStatus {
+		t.Fatalf("expected status %d, got %d", expectedStatus, ir.StatusCode)
 	}
+	return ir
 }
 
-func TestGetPolicy_ReturnsSingleton(t *testing.T) {
-	p1, err := GetPolicy(policy.PolicyMetadata{}, nil)
-	if err != nil {
-		t.Fatalf("GetPolicy failed: %v", err)
-	}
-	p2, err := GetPolicy(policy.PolicyMetadata{}, nil)
-	if err != nil {
-		t.Fatalf("GetPolicy failed: %v", err)
-	}
-	if p1 != p2 {
-		t.Fatalf("expected singleton policy instance")
-	}
-}
-
-func TestBasicAuthPolicy_OnRequest_ValidCredentials(t *testing.T) {
-	p := &BasicAuthPolicy{}
-	ctx := newBasicRequestContext(map[string][]string{
-		"authorization": {basicAuthHeader("admin", "secret")},
-	})
-
-	action := p.OnRequest(ctx, defaultParams())
-
-	if ctx.SharedContext.AuthContext == nil {
-		t.Fatal("expected AuthContext to be set")
-	}
-	if !ctx.SharedContext.AuthContext.Authenticated {
-		t.Error("expected Authenticated=true")
-	}
-	if ctx.SharedContext.AuthContext.AuthType != "basic" {
-		t.Errorf("expected AuthType='basic', got %q", ctx.SharedContext.AuthContext.AuthType)
-	}
-	if ctx.SharedContext.AuthContext.Subject != "admin" {
-		t.Errorf("expected Subject='admin', got %q", ctx.SharedContext.AuthContext.Subject)
-	}
+func assertUpstreamRequestModifications(t *testing.T, action policy.RequestAction) {
+	t.Helper()
 	if _, ok := action.(policy.UpstreamRequestModifications); !ok {
 		t.Fatalf("expected UpstreamRequestModifications, got %T", action)
 	}
 }
 
-func TestBasicAuthPolicy_OnRequest_WrongPassword(t *testing.T) {
-	p := &BasicAuthPolicy{}
-	ctx := newBasicRequestContext(map[string][]string{
-		"authorization": {basicAuthHeader("admin", "wrong-password")},
-	})
-
-	action := p.OnRequest(ctx, defaultParams())
-
-	if ctx.SharedContext.AuthContext == nil {
-		t.Fatal("expected AuthContext to be set")
+func TestGetPolicyReturnsSingleton(t *testing.T) {
+	p1, err := GetPolicy(policy.PolicyMetadata{}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if ctx.SharedContext.AuthContext.Authenticated {
-		t.Error("expected Authenticated=false for wrong password")
-	}
-	if ctx.SharedContext.AuthContext.AuthType != "basic" {
-		t.Errorf("expected AuthType='basic', got %q", ctx.SharedContext.AuthContext.AuthType)
+	p2, err := GetPolicy(policy.PolicyMetadata{}, map[string]interface{}{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 
-	resp, ok := action.(policy.ImmediateResponse)
-	if !ok {
-		t.Fatalf("expected ImmediateResponse, got %T", action)
+	if p1 == nil || p2 == nil {
+		t.Fatalf("expected non-nil policy instances")
 	}
-	if resp.StatusCode != 401 {
-		t.Errorf("expected status 401, got %d", resp.StatusCode)
+	if p1 != p2 {
+		t.Fatalf("expected singleton policy instance, got different pointers")
+	}
+	if _, ok := p1.(*BasicAuthPolicy); !ok {
+		t.Fatalf("expected *BasicAuthPolicy, got %T", p1)
 	}
 }
 
-func TestBasicAuthPolicy_OnRequest_MissingAuthorizationHeader(t *testing.T) {
+func TestMode(t *testing.T) {
 	p := &BasicAuthPolicy{}
-	ctx := newBasicRequestContext(nil)
+	mode := p.Mode()
 
-	action := p.OnRequest(ctx, defaultParams())
-
-	resp, ok := action.(policy.ImmediateResponse)
-	if !ok {
-		t.Fatalf("expected ImmediateResponse, got %T", action)
+	if mode.RequestHeaderMode != policy.HeaderModeProcess {
+		t.Fatalf("expected RequestHeaderMode=Process, got %v", mode.RequestHeaderMode)
 	}
-	if resp.StatusCode != 401 {
-		t.Errorf("expected status 401, got %d", resp.StatusCode)
+	if mode.RequestBodyMode != policy.BodyModeSkip {
+		t.Fatalf("expected RequestBodyMode=Skip, got %v", mode.RequestBodyMode)
 	}
-	assertJSONError(t, resp.Body)
+	if mode.ResponseHeaderMode != policy.HeaderModeSkip {
+		t.Fatalf("expected ResponseHeaderMode=Skip, got %v", mode.ResponseHeaderMode)
+	}
+	if mode.ResponseBodyMode != policy.BodyModeSkip {
+		t.Fatalf("expected ResponseBodyMode=Skip, got %v", mode.ResponseBodyMode)
+	}
 }
 
-func TestBasicAuthPolicy_OnRequest_MalformedAuthorizationHeader(t *testing.T) {
+func TestOnRequestInvalidConfig(t *testing.T) {
+	p := &BasicAuthPolicy{}
 	tests := []struct {
-		name   string
-		header string
+		name          string
+		params        map[string]interface{}
+		expectMessage string
 	}{
-		{"not basic scheme", "Bearer some-token"},
-		{"no space after Basic", "Basicadmin:secret"},
-		{"invalid base64", "Basic !!!not-base64!!!"},
-		{"no colon separator", "Basic " + base64.StdEncoding.EncodeToString([]byte("nocolon"))},
+		{
+			name:          "missing username",
+			params:        map[string]interface{}{"password": "pass"},
+			expectMessage: "Invalid policy configuration: username must be a non-empty string",
+		},
+		{
+			name:          "empty username",
+			params:        map[string]interface{}{"username": "", "password": "pass"},
+			expectMessage: "Invalid policy configuration: username must be a non-empty string",
+		},
+		{
+			name:          "username wrong type",
+			params:        map[string]interface{}{"username": 123, "password": "pass"},
+			expectMessage: "Invalid policy configuration: username must be a non-empty string",
+		},
+		{
+			name:          "missing password",
+			params:        map[string]interface{}{"username": "user"},
+			expectMessage: "Invalid policy configuration: password must be a non-empty string",
+		},
+		{
+			name:          "empty password",
+			params:        map[string]interface{}{"username": "user", "password": ""},
+			expectMessage: "Invalid policy configuration: password must be a non-empty string",
+		},
+		{
+			name:          "password wrong type",
+			params:        map[string]interface{}{"username": "user", "password": 123},
+			expectMessage: "Invalid policy configuration: password must be a non-empty string",
+		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			p := &BasicAuthPolicy{}
-			ctx := newBasicRequestContext(map[string][]string{
-				"authorization": {tt.header},
-			})
-
-			action := p.OnRequest(ctx, defaultParams())
-
-			if ctx.SharedContext.AuthContext == nil {
-				t.Fatal("expected AuthContext to be set on failure")
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := newRequestContext(nil)
+			action := p.OnRequest(ctx, tc.params)
+			ir := assertImmediateResponse(t, action, 500)
+			if got := ir.Headers["content-type"]; got != "application/json" {
+				t.Fatalf("expected content-type application/json, got %q", got)
 			}
-			if ctx.SharedContext.AuthContext.Authenticated {
-				t.Error("expected Authenticated=false")
+			body := parseErrorBody(t, ir.Body)
+			if body["error"] != "Internal Server Error" {
+				t.Fatalf("expected Internal Server Error, got %q", body["error"])
 			}
-
-			resp, ok := action.(policy.ImmediateResponse)
-			if !ok {
-				t.Fatalf("expected ImmediateResponse, got %T", action)
-			}
-			if resp.StatusCode != 401 {
-				t.Errorf("expected status 401, got %d", resp.StatusCode)
+			if body["message"] != tc.expectMessage {
+				t.Fatalf("expected message %q, got %q", tc.expectMessage, body["message"])
 			}
 		})
 	}
 }
 
-func TestBasicAuthPolicy_OnRequest_AllowUnauthenticated(t *testing.T) {
+func TestOnRequestSuccessfulAuthentication(t *testing.T) {
 	p := &BasicAuthPolicy{}
-	ctx := newBasicRequestContext(nil) // no authorization header
+	ctx := newRequestContext(map[string][]string{
+		"Authorization": {encodeBasicCredentials("admin", "secret")},
+	})
 
-	params := map[string]interface{}{
+	action := p.OnRequest(ctx, map[string]interface{}{
+		"username": "admin",
+		"password": "secret",
+	})
+
+	assertUpstreamRequestModifications(t, action)
+	if got, ok := ctx.Metadata[MetadataKeyAuthSuccess].(bool); !ok || !got {
+		t.Fatalf("expected auth.success=true, got %#v", ctx.Metadata[MetadataKeyAuthSuccess])
+	}
+	if got := ctx.Metadata[MetadataKeyAuthUser]; got != "admin" {
+		t.Fatalf("expected auth.username=admin, got %#v", got)
+	}
+	if got := ctx.Metadata[MetadataKeyAuthMethod]; got != "basic" {
+		t.Fatalf("expected auth.method=basic, got %#v", got)
+	}
+}
+
+func TestOnRequestAuthenticationFailuresReturn401(t *testing.T) {
+	p := &BasicAuthPolicy{}
+	baseParams := map[string]interface{}{
+		"username": "admin",
+		"password": "secret",
+	}
+
+	tests := []struct {
+		name    string
+		headers map[string][]string
+		params  map[string]interface{}
+	}{
+		{
+			name:    "missing authorization header",
+			headers: map[string][]string{},
+			params:  baseParams,
+		},
+		{
+			name: "invalid authorization scheme",
+			headers: map[string][]string{
+				"authorization": {"Bearer token"},
+			},
+			params: baseParams,
+		},
+		{
+			name: "lowercase basic scheme rejected",
+			headers: map[string][]string{
+				"authorization": {"basic " + base64.StdEncoding.EncodeToString([]byte("admin:secret"))},
+			},
+			params: baseParams,
+		},
+		{
+			name: "invalid base64",
+			headers: map[string][]string{
+				"authorization": {"Basic @@@@"},
+			},
+			params: baseParams,
+		},
+		{
+			name: "invalid credentials format no colon",
+			headers: map[string][]string{
+				"authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte("admin-only"))},
+			},
+			params: baseParams,
+		},
+		{
+			name: "invalid credentials",
+			headers: map[string][]string{
+				"authorization": {encodeBasicCredentials("admin", "wrong")},
+			},
+			params: baseParams,
+		},
+		{
+			name: "only first authorization header is used",
+			headers: map[string][]string{
+				"authorization": {"Bearer token", encodeBasicCredentials("admin", "secret")},
+			},
+			params: baseParams,
+		},
+		{
+			name: "invalid allowUnauthenticated type defaults to false",
+			headers: map[string][]string{
+				"authorization": {"Bearer token"},
+			},
+			params: map[string]interface{}{
+				"username":             "admin",
+				"password":             "secret",
+				"allowUnauthenticated": "true",
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := newRequestContext(tc.headers)
+			action := p.OnRequest(ctx, tc.params)
+			ir := assertImmediateResponse(t, action, 401)
+
+			if got := ir.Headers["content-type"]; got != "application/json" {
+				t.Fatalf("expected content-type application/json, got %q", got)
+			}
+			if got := ir.Headers["www-authenticate"]; got != `Basic realm="Restricted"` {
+				t.Fatalf("expected default www-authenticate realm, got %q", got)
+			}
+
+			body := parseErrorBody(t, ir.Body)
+			if body["error"] != "Unauthorized" {
+				t.Fatalf("expected Unauthorized error, got %q", body["error"])
+			}
+			if body["message"] != "Authentication required" {
+				t.Fatalf("expected Authentication required message, got %q", body["message"])
+			}
+
+			if got, ok := ctx.Metadata[MetadataKeyAuthSuccess].(bool); !ok || got {
+				t.Fatalf("expected auth.success=false, got %#v", ctx.Metadata[MetadataKeyAuthSuccess])
+			}
+			if got := ctx.Metadata[MetadataKeyAuthMethod]; got != "basic" {
+				t.Fatalf("expected auth.method=basic, got %#v", got)
+			}
+			if _, exists := ctx.Metadata[MetadataKeyAuthUser]; exists {
+				t.Fatalf("did not expect auth.username metadata on failure")
+			}
+		})
+	}
+}
+
+func TestOnRequestRealmOverrideAndEscaping(t *testing.T) {
+	p := &BasicAuthPolicy{}
+	ctx := newRequestContext(nil)
+	realm := `my "realm"\name`
+
+	action := p.OnRequest(ctx, map[string]interface{}{
+		"username": "admin",
+		"password": "secret",
+		"realm":    realm,
+	})
+	ir := assertImmediateResponse(t, action, 401)
+
+	expectedEscaped := strings.ReplaceAll(strings.ReplaceAll(realm, "\\", "\\\\"), "\"", "\\\"")
+	expected := `Basic realm="` + expectedEscaped + `"`
+	if got := ir.Headers["www-authenticate"]; got != expected {
+		t.Fatalf("expected %q, got %q", expected, got)
+	}
+}
+
+func TestOnRequestInvalidRealmFallsBackToDefault(t *testing.T) {
+	p := &BasicAuthPolicy{}
+	tests := []struct {
+		name   string
+		params map[string]interface{}
+	}{
+		{
+			name: "empty realm",
+			params: map[string]interface{}{
+				"username": "admin",
+				"password": "secret",
+				"realm":    "",
+			},
+		},
+		{
+			name: "non-string realm",
+			params: map[string]interface{}{
+				"username": "admin",
+				"password": "secret",
+				"realm":    123,
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := newRequestContext(nil)
+			action := p.OnRequest(ctx, tc.params)
+			ir := assertImmediateResponse(t, action, 401)
+			if got := ir.Headers["www-authenticate"]; got != `Basic realm="Restricted"` {
+				t.Fatalf("expected default realm, got %q", got)
+			}
+		})
+	}
+}
+
+func TestOnRequestAllowUnauthenticated(t *testing.T) {
+	p := &BasicAuthPolicy{}
+	ctx := newRequestContext(nil)
+
+	action := p.OnRequest(ctx, map[string]interface{}{
 		"username":             "admin",
 		"password":             "secret",
 		"allowUnauthenticated": true,
-	}
+	})
 
-	action := p.OnRequest(ctx, params)
-
-	// Should allow through even without credentials
-	if _, ok := action.(policy.UpstreamRequestModifications); !ok {
-		t.Fatalf("expected UpstreamRequestModifications (allow through), got %T", action)
+	assertUpstreamRequestModifications(t, action)
+	if got, ok := ctx.Metadata[MetadataKeyAuthSuccess].(bool); !ok || got {
+		t.Fatalf("expected auth.success=false, got %#v", ctx.Metadata[MetadataKeyAuthSuccess])
 	}
-	// AuthContext should still reflect the failure
-	if ctx.SharedContext.AuthContext == nil {
-		t.Fatal("expected AuthContext to be set")
+	if got := ctx.Metadata[MetadataKeyAuthMethod]; got != "basic" {
+		t.Fatalf("expected auth.method=basic, got %#v", got)
 	}
-	if ctx.SharedContext.AuthContext.Authenticated {
-		t.Error("expected Authenticated=false even when allowUnauthenticated=true")
+	if _, exists := ctx.Metadata[MetadataKeyAuthUser]; exists {
+		t.Fatalf("did not expect auth.username metadata for unauthenticated pass-through")
 	}
 }
 
-func TestBasicAuthPolicy_OnRequest_CustomRealm(t *testing.T) {
+func TestOnResponseReturnsNil(t *testing.T) {
 	p := &BasicAuthPolicy{}
-	ctx := newBasicRequestContext(nil)
-
-	params := map[string]interface{}{
-		"username": "admin",
-		"password": "secret",
-		"realm":    "My API",
-	}
-
-	action := p.OnRequest(ctx, params)
-
-	resp, ok := action.(policy.ImmediateResponse)
-	if !ok {
-		t.Fatalf("expected ImmediateResponse, got %T", action)
-	}
-	wwwAuth := resp.Headers["www-authenticate"]
-	expected := fmt.Sprintf(`Basic realm="My API"`)
-	if wwwAuth != expected {
-		t.Errorf("expected WWW-Authenticate=%q, got %q", expected, wwwAuth)
-	}
-}
-
-func TestBasicAuthPolicy_OnRequest_InvalidConfig_NoUsername(t *testing.T) {
-	p := &BasicAuthPolicy{}
-	ctx := newBasicRequestContext(nil)
-
-	params := map[string]interface{}{
-		"password": "secret",
-	}
-
-	action := p.OnRequest(ctx, params)
-
-	resp, ok := action.(policy.ImmediateResponse)
-	if !ok {
-		t.Fatalf("expected ImmediateResponse, got %T", action)
-	}
-	if resp.StatusCode != 500 {
-		t.Errorf("expected status 500 for invalid config, got %d", resp.StatusCode)
-	}
-}
-
-func TestBasicAuthPolicy_OnRequest_InvalidConfig_NoPassword(t *testing.T) {
-	p := &BasicAuthPolicy{}
-	ctx := newBasicRequestContext(nil)
-
-	params := map[string]interface{}{
-		"username": "admin",
-	}
-
-	action := p.OnRequest(ctx, params)
-
-	resp, ok := action.(policy.ImmediateResponse)
-	if !ok {
-		t.Fatalf("expected ImmediateResponse, got %T", action)
-	}
-	if resp.StatusCode != 500 {
-		t.Errorf("expected status 500 for invalid config, got %d", resp.StatusCode)
-	}
-}
-
-func TestBasicAuthPolicy_OnResponse_NoOp(t *testing.T) {
-	p := &BasicAuthPolicy{}
-	action := p.OnResponse(&policy.ResponseContext{}, nil)
+	action := p.OnResponse(&policy.ResponseContext{}, map[string]interface{}{})
 	if action != nil {
 		t.Fatalf("expected nil response action, got %T", action)
-	}
-}
-
-func TestBasicAuthPolicy_AuthContext_PreviousPreserved_OnSuccess(t *testing.T) {
-	p := &BasicAuthPolicy{}
-	prior := &policy.AuthContext{Authenticated: true, AuthType: "other"}
-	ctx := newBasicRequestContext(nil)
-	ctx.SharedContext.AuthContext = prior
-
-	p.handleAuthSuccess(ctx, "alice")
-
-	if ctx.SharedContext.AuthContext == nil {
-		t.Fatal("Expected AuthContext to be set")
-	}
-	if ctx.SharedContext.AuthContext.Previous != prior {
-		t.Errorf("Expected Previous to point to prior AuthContext, got %v", ctx.SharedContext.AuthContext.Previous)
-	}
-}
-
-func TestBasicAuthPolicy_AuthContext_PreviousPreserved_OnFailure(t *testing.T) {
-	p := &BasicAuthPolicy{}
-	prior := &policy.AuthContext{Authenticated: true, AuthType: "other"}
-	ctx := newBasicRequestContext(nil)
-	ctx.SharedContext.AuthContext = prior
-
-	p.handleAuthFailure(ctx, false, "Restricted", "invalid credentials")
-
-	if ctx.SharedContext.AuthContext == nil {
-		t.Fatal("Expected AuthContext to be set")
-	}
-	if ctx.SharedContext.AuthContext.Previous != prior {
-		t.Errorf("Expected Previous to point to prior AuthContext, got %v", ctx.SharedContext.AuthContext.Previous)
-	}
-}
-
-func assertJSONError(t *testing.T, body []byte) {
-	t.Helper()
-	var result map[string]string
-	if err := json.Unmarshal(body, &result); err != nil {
-		t.Fatalf("expected JSON body, got: %s", string(body))
-	}
-	if result["error"] == "" {
-		t.Error("expected non-empty 'error' field in JSON body")
 	}
 }
