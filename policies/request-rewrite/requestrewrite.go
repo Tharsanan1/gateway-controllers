@@ -360,6 +360,9 @@ func applyPathRewrite(ctx *policy.RequestContext, currentPath string, cfg *pathR
 }
 
 func splitBasePath(ctx *policy.RequestContext, pathOnly string) (string, string) {
+	if ctx == nil || ctx.SharedContext == nil {
+		return "", pathOnly
+	}
 	base := strings.TrimSpace(ctx.APIContext)
 	if base == "" || base == "/" {
 		return "", pathOnly

@@ -1,134 +1,190 @@
 name: request-rewrite
 version: v0.2.1
 description: |
-  Rewrites incoming requests by updating paths, query parameters, and/or HTTP methods before forwarding to upstream services.
-  Supports multiple path rewrite types: prefix replacement, full path replacement, and regex-based substitution.
-  Supports query parameter rewrite rules (replace, remove, add, append, and regex-based substitution).
-  Method rewriting changes the HTTP method of the request.
-  Optional match conditions allow rewrites to apply only when headers and/or query parameters match.
+  Rewrite request paths, query parameters, and HTTP methods before forwarding upstream, with optional header and query match conditions to apply rewrites only when criteria are met.
 
 parameters:
   type: object
+  additionalProperties: false
   properties:
     match:
       type: object
-      description: Optional match conditions that gate whether rewrites are applied
+      x-wso2-policy-advanced-param: true
+      description: Apply rewrites only when match conditions pass.
+      additionalProperties: false
       properties:
         headers:
           type: array
-          description: All header matchers must succeed for the policy to apply
+          x-wso2-policy-advanced-param: true
+          description: Match request headers.
           minItems: 1
           items:
             type: object
+            additionalProperties: false
             properties:
               name:
                 type: string
-                description: Header name to match (case-insensitive)
+                x-wso2-policy-advanced-param: true
+                description: Match header name (case-insensitive).
                 minLength: 1
               type:
                 type: string
-                description: Match type for the header
+                x-wso2-policy-advanced-param: true
+                description: Select header match type.
                 enum:
                   - Exact
                   - Regex
                   - Present
               value:
                 type: string
-                description: Value to match (required for Exact and Regex)
+                x-wso2-policy-advanced-param: true
+                description: Match header value for Exact or Regex.
                 minLength: 1
                 maxLength: 2048
             required:
               - name
               - type
+            allOf:
+              - if:
+                  properties:
+                    type:
+                      enum: [Exact, Regex]
+                  required: [type]
+                then:
+                  required: [value]
         queryParams:
           type: array
-          description: All query param matchers must succeed for the policy to apply
+          x-wso2-policy-advanced-param: true
+          description: Match request query parameters.
           minItems: 1
           items:
             type: object
+            additionalProperties: false
             properties:
               name:
                 type: string
-                description: Query parameter name to match
+                x-wso2-policy-advanced-param: true
+                description: Match query parameter name.
                 minLength: 1
               type:
                 type: string
-                description: Match type for the query parameter
+                x-wso2-policy-advanced-param: true
+                description: Select query match type.
                 enum:
                   - Exact
                   - Regex
                   - Present
               value:
                 type: string
-                description: Value to match (required for Exact and Regex)
+                x-wso2-policy-advanced-param: true
+                description: Match parameter value for Exact or Regex.
                 minLength: 1
                 maxLength: 2048
             required:
               - name
               - type
+            allOf:
+              - if:
+                  properties:
+                    type:
+                      enum: [Exact, Regex]
+                  required: [type]
+                then:
+                  required: [value]
       minProperties: 1
+
     pathRewrite:
       type: object
-      description: Configuration for rewriting the request path
+      x-wso2-policy-advanced-param: false
+      description: Rewrite request path.
+      additionalProperties: false
       properties:
         type:
           type: string
-          description: The type of path rewrite to perform
+          x-wso2-policy-advanced-param: false
+          description: Choose path rewrite mode.
           enum:
             - ReplacePrefixMatch
             - ReplaceFullPath
             - ReplaceRegexMatch
         replacePrefixMatch:
           type: string
-          description: |
-            The value to replace the matched prefix with.
-            Required when type is ReplacePrefixMatch.
-            The prefix to match is determined by the operation path this policy is attached to.
+          x-wso2-policy-advanced-param: false
+          description: Replace matched operation prefix with this path.
+          minLength: 1
           maxLength: 2048
+          pattern: "^/.*"
         replaceFullPath:
           type: string
-          description: |
-            The exact path to replace the entire request path with.
-            Required when type is ReplaceFullPath.
+          x-wso2-policy-advanced-param: false
+          description: Replace full request path with this path.
           minLength: 1
           maxLength: 2048
           pattern: "^/.*"
         replaceRegexMatch:
           type: object
-          description: |
-            Regex-based path rewrite configuration.
-            Required when type is ReplaceRegexMatch.
-            Uses RE2 regex syntax: https://github.com/google/re2/wiki/Syntax
+          x-wso2-policy-advanced-param: true
+          description: Rewrite path using regex pattern and substitution.
+          additionalProperties: false
           properties:
             pattern:
               type: string
-              description: Regular expression pattern to match against the path
+              x-wso2-policy-advanced-param: true
+              description: Match path using RE2 regex.
               minLength: 1
               maxLength: 1024
             substitution:
               type: string
-              description: |
-                Replacement string. May include numbered capture groups (e.g., \1, \2).
+              x-wso2-policy-advanced-param: true
+              description: Replace match using capture groups like \1.
               maxLength: 2048
           required:
             - pattern
             - substitution
       required:
         - type
+      allOf:
+        - if:
+            properties:
+              type:
+                const: ReplacePrefixMatch
+            required: [type]
+          then:
+            required: [replacePrefixMatch]
+        - if:
+            properties:
+              type:
+                const: ReplaceFullPath
+            required: [type]
+          then:
+            required: [replaceFullPath]
+        - if:
+            properties:
+              type:
+                const: ReplaceRegexMatch
+            required: [type]
+          then:
+            required: [replaceRegexMatch]
+
     queryRewrite:
       type: object
-      description: Configuration for rewriting query parameters
+      x-wso2-policy-advanced-param: false
+      description: Rewrite request query parameters.
+      additionalProperties: false
       properties:
         rules:
           type: array
-          description: List of query parameter rewrite rules, applied in order
+          x-wso2-policy-advanced-param: false
+          description: Apply query rewrite rules in order.
           minItems: 1
           items:
             type: object
+            additionalProperties: false
             properties:
               action:
                 type: string
-                description: Rewrite action to apply
+                x-wso2-policy-advanced-param: false
+                description: Choose query rewrite action.
                 enum:
                   - Replace
                   - Remove
@@ -137,34 +193,56 @@ parameters:
                   - ReplaceRegexMatch
               name:
                 type: string
-                description: Query parameter name to target
+                x-wso2-policy-advanced-param: false
+                description: Target query parameter name.
                 minLength: 1
               value:
                 type: string
-                description: Value used by Replace, Add, and Append
+                x-wso2-policy-advanced-param: false
+                description: Set value for Replace, Add, or Append.
                 maxLength: 2048
               separator:
                 type: string
-                description: Optional separator used by Append (default is empty string)
+                x-wso2-policy-advanced-param: true
+                description: Join value for Append.
                 default: ""
                 maxLength: 64
               pattern:
                 type: string
-                description: Regular expression pattern to match against the parameter value
+                x-wso2-policy-advanced-param: true
+                description: Match value using RE2 regex.
                 minLength: 1
                 maxLength: 1024
               substitution:
                 type: string
-                description: Replacement string (supports \1, \2, etc. for capture groups)
+                x-wso2-policy-advanced-param: true
+                description: Replace value using capture groups like \1.
                 maxLength: 2048
             required:
               - action
               - name
+            allOf:
+              - if:
+                  properties:
+                    action:
+                      enum: [Replace, Add, Append]
+                  required: [action]
+                then:
+                  required: [value]
+              - if:
+                  properties:
+                    action:
+                      const: ReplaceRegexMatch
+                  required: [action]
+                then:
+                  required: [pattern, substitution]
       required:
         - rules
+
     methodRewrite:
       type: string
-      description: HTTP method to change the request to
+      x-wso2-policy-advanced-param: false
+      description: Rewrite request HTTP method.
       enum:
         - GET
         - POST
@@ -173,6 +251,7 @@ parameters:
         - PATCH
         - HEAD
         - OPTIONS
+
   anyOf:
     - required: [pathRewrite]
     - required: [queryRewrite]
@@ -180,4 +259,5 @@ parameters:
 
 systemParameters:
   type: object
+  additionalProperties: false
   properties: {}
