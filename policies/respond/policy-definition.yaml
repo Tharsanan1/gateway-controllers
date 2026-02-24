@@ -1,40 +1,47 @@
 name: respond
 version: v0.2.0
 description: |
-  Returns an immediate response to the client without forwarding the request to the upstream backend.
-  This policy terminates the request processing chain and is useful for mocking APIs, returning
-  error responses, or implementing custom short-circuit logic.
+  Return an immediate response to the client without forwarding upstream, useful for API mocks, controlled error responses, and short-circuit request handling.
 
 parameters:
   type: object
+  additionalProperties: false
   properties:
     statusCode:
       type: integer
+      x-wso2-policy-advanced-param: false
       description: HTTP status code for the response. Defaults to 200 if not specified.
       minimum: 100
       maximum: 599
       default: 200
     body:
       type: string
+      x-wso2-policy-advanced-param: false
       description: Response body content as a string. Can be plain text, JSON, XML,
         or any other format. Set appropriate content-type header to indicate the body
         format.
+      default: ""
       maxLength: 1048576
     headers:
       type: array
+      x-wso2-policy-advanced-param: false
       description: Array of response headers to include in the response. Each header
         must have 'name' and 'value' fields.
+      default: []
       items:
         type: object
+        additionalProperties: false
         properties:
           name:
             type: string
+            x-wso2-policy-advanced-param: false
             description: Header name
             minLength: 1
             maxLength: 256
             pattern: "^[a-zA-Z0-9-_]+$"
           value:
             type: string
+            x-wso2-policy-advanced-param: false
             description: Header value
             maxLength: 8192
         required:
@@ -43,4 +50,5 @@ parameters:
 
 systemParameters:
   type: object
+  additionalProperties: false
   properties: {}

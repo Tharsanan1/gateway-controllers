@@ -32,7 +32,7 @@ These parameters are configured per-API/route by the API developer:
 |-----------|------|----------|---------|-------------|
 | `statusCode` | integer | No | `200` | HTTP status code for the immediate response. |
 | `body` | string | No | `""` | Response body content returned to the client. |
-| `headers` | `HeaderObject` array | No | - | Response headers to include in the immediate response. |
+| `headers` | `HeaderObject` array | No | `[]` | Response headers to include in the immediate response. |
 
 ### HeaderObject Configuration
 
