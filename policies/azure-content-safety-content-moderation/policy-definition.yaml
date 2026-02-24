@@ -19,7 +19,7 @@ parameters:
           description: |
             Specifies the JSONPath used to extract content for moderation. When
             empty, the entire payload is evaluated as plain text.
-          default: ""
+          default: "$.messages[-1].content"
         passthroughOnError:
           type: boolean
           x-wso2-policy-advanced-param: true
@@ -81,7 +81,7 @@ parameters:
           description: |
             Specifies the JSONPath used to extract content for moderation. When
             empty, the entire payload is evaluated as plain text.
-          default: ""
+          default: "$.messages[-1].content"
         passthroughOnError:
           type: boolean
           x-wso2-policy-advanced-param: true

@@ -53,7 +53,7 @@ parameters:
       description: |
         Specifies the JSONPath used to extract the value to process. When
         empty, the entire payload is processed as plain text.
-      default: "$.messages"
+      default: "$.messages[-1].content"
     redactPII:
       type: boolean
       x-wso2-policy-advanced-param: true

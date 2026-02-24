@@ -28,7 +28,7 @@ parameters:
             JSONPath expression to extract a specific value from JSON payload.
             If empty, validates the entire payload as a string.
             Examples: "$.messages", "$.data.content", "$.items[0].text"
-          default: "$.messages"
+          default: "$.messages[-1].content"
         invert:
           type: boolean
           x-wso2-policy-advanced-param: true
@@ -68,7 +68,7 @@ parameters:
             JSONPath expression to extract a specific value from JSON payload.
             If empty, validates the entire payload as a string.
             Examples: "$.messages", "$.data.content", "$.items[0].text"
-          default: "$.messages"
+          default: "$.messages[-1].content"
         invert:
           type: boolean
           x-wso2-policy-advanced-param: true
