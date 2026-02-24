@@ -7,5 +7,5 @@
     "Guardrails",
     "AI"
   ],
-  "description": "Validates URLs found in request or response body content.\nSupports JSONPath extraction to validate specific fields within JSON payloads.\nCan validate URLs via DNS resolution only or HTTP HEAD request reachability.\nSupports separate configuration for request and response phases."
+  "description": "Validate URLs in request or response content using JSONPath extraction with DNS-only or HTTP reachability checks."
 }

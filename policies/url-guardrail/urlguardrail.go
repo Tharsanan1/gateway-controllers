@@ -14,7 +14,7 @@
  *  limitations under the License.
  *
  */
- 
+
 package urlguardrail
 
 import (
@@ -26,7 +26,6 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -39,6 +38,7 @@ const (
 	TextCleanRegex     = "^\"|\"$"
 	URLRegex           = "https?://[^\\s,\"'{}\\[\\]\\\\`*]+"
 	DefaultTimeout     = 3000 // milliseconds
+	DefaultJSONPath    = "$.messages"
 )
 
 var (
@@ -67,8 +67,11 @@ func GetPolicy(
 ) (policy.Policy, error) {
 	p := &URLGuardrailPolicy{}
 
-	// Extract and parse request parameters if present
-	if requestParamsRaw, ok := params["request"].(map[string]interface{}); ok {
+	requestParamsRaw, hasRequest, err := getFlowParams(params, "request")
+	if err != nil {
+		return nil, err
+	}
+	if hasRequest {
 		requestParams, err := parseParams(requestParamsRaw)
 		if err != nil {
 			return nil, fmt.Errorf("invalid request parameters: %w", err)
@@ -77,8 +80,11 @@ func GetPolicy(
 		p.requestParams = requestParams
 	}
 
-	// Extract and parse response parameters if present
-	if responseParamsRaw, ok := params["response"].(map[string]interface{}); ok {
+	responseParamsRaw, hasResponse, err := getFlowParams(params, "response")
+	if err != nil {
+		return nil, err
+	}
+	if hasResponse {
 		responseParams, err := parseParams(responseParamsRaw)
 		if err != nil {
 			return nil, fmt.Errorf("invalid response parameters: %w", err)
@@ -97,9 +103,23 @@ func GetPolicy(
 	return p, nil
 }
 
+func getFlowParams(params map[string]interface{}, flow string) (map[string]interface{}, bool, error) {
+	raw, exists := params[flow]
+	if !exists {
+		return nil, false, nil
+	}
+	flowParams, ok := raw.(map[string]interface{})
+	if !ok {
+		return nil, false, fmt.Errorf("'%s' must be an object", flow)
+	}
+	return flowParams, true, nil
+}
+
 // parseParams parses and validates parameters from map to struct
 func parseParams(params map[string]interface{}) (URLGuardrailPolicyParams, error) {
-	var result URLGuardrailPolicyParams
+	result := URLGuardrailPolicyParams{
+		JsonPath: DefaultJSONPath,
+	}
 
 	// Extract optional jsonPath parameter
 	if jsonPathRaw, ok := params["jsonPath"]; ok {
@@ -150,6 +170,8 @@ func extractInt(value interface{}) (int, error) {
 	switch v := value.(type) {
 	case int:
 		return v, nil
+	case int32:
+		return int(v), nil
 	case int64:
 		return int(v), nil
 	case float64:
@@ -157,15 +179,6 @@ func extractInt(value interface{}) (int, error) {
 			return 0, fmt.Errorf("expected an integer but got %v", v)
 		}
 		return int(v), nil
-	case string:
-		parsed, err := strconv.ParseFloat(v, 64)
-		if err != nil {
-			return 0, err
-		}
-		if parsed != float64(int(parsed)) {
-			return 0, fmt.Errorf("expected an integer but got %v", v)
-		}
-		return int(parsed), nil
 	default:
 		return 0, fmt.Errorf("cannot convert %T to int", value)
 	}
