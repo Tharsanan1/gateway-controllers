@@ -1,10 +1,7 @@
 name: mcp-auth
 version: v0.2.2
 description: |
-  This policy is used to secure traffic to Model Context Protocol server as defined in the specification 
-  (https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization). The Gateway acts as the 
-  resource server and protects the MCP resources by validating the access tokens presented in the requests.
-  This uses the JwtAuthentication policy underneath to validate the access tokens.
+  Secure Model Context Protocol traffic by validating bearer access tokens for MCP resources using the underlying JWT authentication runtime.
 
 parameters:
   type: object
@@ -12,13 +9,7 @@ parameters:
   properties:
     issuers:
       type: array
-      description: >-
-        List of issuer names (referencing entries in `system.keyManagers`).
-        This list will be sent as the authorization servers in the protected resource
-        metadata response. If omitted, all configured key managers will be used. The
-        selection will be based on the MCP client Implementation.
-        Furthermore, this list will also be used for validating tokens. If omitted, 
-        runtime will try to match token `iss` claim to available key managers or try all providers.
+      description: Specify issuer names from `system.keyManagers` to publish in protected resource metadata and use for token validation; if empty, runtime uses all configured key managers.
       default: []
       items:
         type: string

@@ -1,10 +1,7 @@
 name: content-length-guardrail
 version: v0.2.0
 description: |
-  Validates the byte length of request or response body content.
-  Supports JSONPath extraction to validate specific fields within JSON payloads.
-  Can be configured with min/max byte length constraints and inverted logic.
-  Supports separate configuration for request and response phases.
+  Validate content byte lengths in request or response payloads using min/max limits, optional JSONPath extraction, and optional inverted logic.
 
 parameters:
   type: object

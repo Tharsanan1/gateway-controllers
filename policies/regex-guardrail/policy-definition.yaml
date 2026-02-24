@@ -1,10 +1,7 @@
 name: regex-guardrail
 version: v0.2.0
 description: |
-  Validates request or response body content against a regular expression pattern.
-  Supports JSONPath extraction to validate specific fields within JSON payloads.
-  Can be configured to match or invert the regex pattern.
-  Supports separate configuration for request and response phases.
+  Validate request or response content against regex patterns using optional JSONPath extraction and optional inverted matching.
 
 parameters:
   type: object

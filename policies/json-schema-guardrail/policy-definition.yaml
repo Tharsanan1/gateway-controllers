@@ -1,10 +1,7 @@
 name: json-schema-guardrail
 version: v0.2.0
 description: |
-  Validates request or response body content against a JSON Schema.
-  Supports JSONPath extraction to validate specific fields within JSON payloads.
-  Can be configured with inverted logic to pass when schema validation fails.
-  Supports separate configuration for request and response phases.
+  Validate request or response content against a JSON Schema with optional JSONPath extraction and optional inverted validation logic.
 
 parameters:
   type: object
@@ -15,10 +12,7 @@ parameters:
       properties:
         schema:
           type: string
-          description: |
-            JSON Schema as a string (must be valid JSON).
-            Supports all JSON Schema draft 7 features including types, properties, required fields, constraints, etc.
-            Example: '{"type":"object","properties":{"name":{"type":"string"},"age":{"type":"integer","minimum":18}},"required":["name","age"]}'
+          description: Provide the JSON Schema as a valid JSON string for validating the extracted or full payload.
         jsonPath:
           type: string
           description: |
@@ -48,10 +42,7 @@ parameters:
       properties:
         schema:
           type: string
-          description: |
-            JSON Schema as a string (must be valid JSON).
-            Supports all JSON Schema draft 7 features including types, properties, required fields, constraints, etc.
-            Example: '{"type":"object","properties":{"name":{"type":"string"},"age":{"type":"integer","minimum":18}},"required":["name","age"]}'
+          description: Provide the JSON Schema as a valid JSON string for validating the extracted or full payload.
         jsonPath:
           type: string
           description: |

@@ -1,15 +1,7 @@
 name: mcp-rewrite
 version: v0.2.0
 description: |
-  MCP Rewrite policy defines user-facing tools, resources, and prompts and maps
-  them to backend capability names using optional "target" fields. Request payloads
-  are rewritten to the backend capability name when configured, and list responses
-  rewrite capability names in-place to return user-facing values. When a list is
-  provided, only the configured capabilities are included in list responses.
-
-  - Null or omitted: Allow all capabilities of that type without rewriting
-  - Empty array []: Deny all capabilities of that type
-  - Non-empty array: Allow only the specified capabilities and apply rewrites
+  Rewrite MCP tool, resource, and prompt names between client-facing and backend values, and optionally filter list responses to configured entries (omit to allow all, set `[]` to deny all).
 
 parameters:
   type: object
