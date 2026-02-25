@@ -33,7 +33,7 @@ const (
 	GuardrailErrorCode = 422
 	TextCleanRegex     = "^\"|\"$"
 	SentenceSplitRegex = "[.!?]"
-	DefaultJSONPath    = "$.messages"
+	DefaultJSONPath    = "$.messages[-1].content"
 )
 
 var (
@@ -243,7 +243,7 @@ func (p *SentenceCountGuardrailPolicy) OnResponse(ctx *policy.ResponseContext, p
 // validatePayload validates payload sentence count
 func (p *SentenceCountGuardrailPolicy) validatePayload(payload []byte, params SentenceCountGuardrailPolicyParams, isResponse bool) interface{} {
 	// Extract value using JSONPath
-	extractedValue, err := utils.ExtractStringValueFromJsonpath(payload, params.JsonPath)
+	extractedValue, err := extractStringFromJSONPath(payload, params.JsonPath)
 	if err != nil {
 		slog.Debug("SentenceCountGuardrail: Error extracting value from JSONPath", "jsonPath", params.JsonPath, "error", err, "isResponse", isResponse)
 		return p.buildErrorResponse("Error extracting value from JSONPath", err, isResponse, params.ShowAssessment, params.Min, params.Max)
@@ -288,6 +288,73 @@ func (p *SentenceCountGuardrailPolicy) validatePayload(payload []byte, params Se
 		return policy.UpstreamResponseModifications{}
 	}
 	return policy.UpstreamRequestModifications{}
+}
+
+func extractStringFromJSONPath(payload []byte, jsonPath string) (string, error) {
+	value, err := utils.ExtractStringValueFromJsonpath(payload, jsonPath)
+	if err == nil {
+		return value, nil
+	}
+
+	var jsonData map[string]interface{}
+	if unmarshalErr := json.Unmarshal(payload, &jsonData); unmarshalErr != nil {
+		return "", err
+	}
+
+	extracted, extractErr := utils.ExtractValueFromJsonpath(jsonData, jsonPath)
+	if extractErr != nil {
+		return "", extractErr
+	}
+
+	normalized, normalizeErr := normalizeExtractedValue(extracted)
+	if normalizeErr != nil {
+		return "", err
+	}
+
+	return normalized, nil
+}
+
+func normalizeExtractedValue(value interface{}) (string, error) {
+	switch v := value.(type) {
+	case string:
+		return v, nil
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64), nil
+	case int:
+		return strconv.Itoa(v), nil
+	case bool:
+		return strconv.FormatBool(v), nil
+	case map[string]interface{}:
+		if content, ok := v["content"]; ok {
+			return normalizeExtractedValue(content)
+		}
+		if text, ok := v["text"]; ok {
+			return normalizeExtractedValue(text)
+		}
+		encoded, err := json.Marshal(v)
+		if err != nil {
+			return "", err
+		}
+		return string(encoded), nil
+	case []interface{}:
+		parts := make([]string, 0, len(v))
+		for _, item := range v {
+			part, itemErr := normalizeExtractedValue(item)
+			if itemErr != nil {
+				continue
+			}
+			part = strings.TrimSpace(part)
+			if part != "" {
+				parts = append(parts, part)
+			}
+		}
+		if len(parts) == 0 {
+			return "", fmt.Errorf("value at JSONPath is an empty array")
+		}
+		return strings.Join(parts, " "), nil
+	default:
+		return "", fmt.Errorf("value at JSONPath is not a supported type")
+	}
 }
 
 // buildErrorResponse builds an error response for both request and response phases
