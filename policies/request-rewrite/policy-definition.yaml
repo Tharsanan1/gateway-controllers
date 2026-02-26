@@ -129,13 +129,13 @@ parameters:
           properties:
             pattern:
               type: string
-              x-wso2-policy-advanced-param: true
+              x-wso2-policy-advanced-param: false
               description: RE2 regex pattern applied to the relative path.
               minLength: 1
               maxLength: 1024
             substitution:
               type: string
-              x-wso2-policy-advanced-param: true
+              x-wso2-policy-advanced-param: false
               description: Replacement string for regex matches. Use capture groups like \1.
               maxLength: 2048
           required:

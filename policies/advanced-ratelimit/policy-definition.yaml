@@ -67,7 +67,7 @@ parameters:
 
           keyExtraction:
             type: array
-            x-wso2-policy-advanced-param: false
+            x-wso2-policy-advanced-param: true
             description: |
               Defines per-quota key extraction. If omitted, the policy uses global keyExtraction
               or defaults to routename.
@@ -102,7 +102,7 @@ parameters:
 
           costExtraction:
             type: object
-            x-wso2-policy-advanced-param: false
+            x-wso2-policy-advanced-param: true
             description: |
               Configures per-quota dynamic cost extraction from request or response data.
               Values from successful sources are summed after multipliers.
@@ -217,7 +217,7 @@ parameters:
 
     onRateLimitExceeded:
       type: object
-      x-wso2-policy-advanced-param: false
+      x-wso2-policy-advanced-param: true
       description: Customizes the response returned when a request exceeds rate limits.
       additionalProperties: false
       properties:
