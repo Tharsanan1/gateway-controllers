@@ -81,9 +81,9 @@ parameters:
           x-wso2-policy-advanced-param: true
           description: |
             Extract text with JSONPath for moderation.
-            Defaults to "$.messages[-1].content" (last message content).
+            Defaults to "$.choices[0].message.content" (assistant response content).
             Set to "" for full payload text.
-          default: "$.messages[-1].content"
+          default: "$.choices[0].message.content"
         passthroughOnError:
           type: boolean
           x-wso2-policy-advanced-param: true

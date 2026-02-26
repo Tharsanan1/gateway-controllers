@@ -10,13 +10,13 @@ parameters:
     match:
       type: object
       x-wso2-policy-advanced-param: true
-      description: Apply rewrites only when match conditions pass.
+      description: Run rewrites only when all configured header and query parameter matchers succeed.
       additionalProperties: false
       properties:
         headers:
           type: array
           x-wso2-policy-advanced-param: true
-          description: Match request headers.
+          description: List of header match conditions. Every condition must match for rewrites to run.
           minItems: 1
           items:
             type: object
@@ -25,12 +25,12 @@ parameters:
               name:
                 type: string
                 x-wso2-policy-advanced-param: true
-                description: Match header name (case-insensitive).
+                description: Header name to evaluate. Matching is case-insensitive.
                 minLength: 1
               type:
                 type: string
                 x-wso2-policy-advanced-param: true
-                description: Select header match type.
+                description: "How to evaluate the header: Exact value, RE2 Regex, or only presence."
                 enum:
                   - Exact
                   - Regex
@@ -38,7 +38,7 @@ parameters:
               value:
                 type: string
                 x-wso2-policy-advanced-param: true
-                description: Match header value for Exact or Regex.
+                description: Header value or regex pattern used when type is Exact or Regex.
                 minLength: 1
                 maxLength: 2048
             required:
@@ -55,7 +55,7 @@ parameters:
         queryParams:
           type: array
           x-wso2-policy-advanced-param: true
-          description: Match request query parameters.
+          description: List of query parameter match conditions. Every condition must match for rewrites to run.
           minItems: 1
           items:
             type: object
@@ -64,12 +64,12 @@ parameters:
               name:
                 type: string
                 x-wso2-policy-advanced-param: true
-                description: Match query parameter name.
+                description: Query parameter name to evaluate.
                 minLength: 1
               type:
                 type: string
                 x-wso2-policy-advanced-param: true
-                description: Select query match type.
+                description: "How to evaluate the query parameter: Exact value, RE2 Regex, or only presence."
                 enum:
                   - Exact
                   - Regex
@@ -77,7 +77,7 @@ parameters:
               value:
                 type: string
                 x-wso2-policy-advanced-param: true
-                description: Match parameter value for Exact or Regex.
+                description: Parameter value or regex pattern used when type is Exact or Regex.
                 minLength: 1
                 maxLength: 2048
             required:
@@ -96,13 +96,13 @@ parameters:
     pathRewrite:
       type: object
       x-wso2-policy-advanced-param: false
-      description: Rewrite request path.
+      description: Path rewrite settings applied to the request relative path.
       additionalProperties: false
       properties:
         type:
           type: string
           x-wso2-policy-advanced-param: false
-          description: Choose path rewrite mode.
+          description: "Path rewrite strategy: replace operation prefix, full path, or regex match."
           enum:
             - ReplacePrefixMatch
             - ReplaceFullPath
@@ -110,33 +110,33 @@ parameters:
         replacePrefixMatch:
           type: string
           x-wso2-policy-advanced-param: false
-          description: Replace matched operation prefix with this path.
+          description: New path prefix used for ReplacePrefixMatch. The matched operation prefix is replaced and the rest is kept.
           minLength: 1
           maxLength: 2048
           pattern: "^/.*"
         replaceFullPath:
           type: string
           x-wso2-policy-advanced-param: false
-          description: Replace full request path with this path.
+          description: Full relative path to forward when type is ReplaceFullPath.
           minLength: 1
           maxLength: 2048
           pattern: "^/.*"
         replaceRegexMatch:
           type: object
-          x-wso2-policy-advanced-param: true
-          description: Rewrite path using regex pattern and substitution.
+          x-wso2-policy-advanced-param: false
+          description: Regex-based path rewrite settings used when type is ReplaceRegexMatch.
           additionalProperties: false
           properties:
             pattern:
               type: string
               x-wso2-policy-advanced-param: true
-              description: Match path using RE2 regex.
+              description: RE2 regex pattern applied to the relative path.
               minLength: 1
               maxLength: 1024
             substitution:
               type: string
               x-wso2-policy-advanced-param: true
-              description: Replace match using capture groups like \1.
+              description: Replacement string for regex matches. Use capture groups like \1.
               maxLength: 2048
           required:
             - pattern
@@ -169,13 +169,13 @@ parameters:
     queryRewrite:
       type: object
       x-wso2-policy-advanced-param: false
-      description: Rewrite request query parameters.
+      description: Ordered rules that modify query parameters before the request is forwarded.
       additionalProperties: false
       properties:
         rules:
           type: array
           x-wso2-policy-advanced-param: false
-          description: Apply query rewrite rules in order.
+          description: Query rewrite rules executed from first to last.
           minItems: 1
           items:
             type: object
@@ -184,7 +184,7 @@ parameters:
               action:
                 type: string
                 x-wso2-policy-advanced-param: false
-                description: Choose query rewrite action.
+                description: "Rule behavior: Replace, Remove, Add, Append, or ReplaceRegexMatch."
                 enum:
                   - Replace
                   - Remove
@@ -194,29 +194,29 @@ parameters:
               name:
                 type: string
                 x-wso2-policy-advanced-param: false
-                description: Target query parameter name.
+                description: Query parameter name this rule targets.
                 minLength: 1
               value:
                 type: string
                 x-wso2-policy-advanced-param: false
-                description: Set value for Replace, Add, or Append.
+                description: Value to set or append when action is Replace, Add, or Append.
                 maxLength: 2048
               separator:
                 type: string
                 x-wso2-policy-advanced-param: true
-                description: Join value for Append.
+                description: String inserted between existing and appended values when action is Append.
                 default: ""
                 maxLength: 64
               pattern:
                 type: string
                 x-wso2-policy-advanced-param: true
-                description: Match value using RE2 regex.
+                description: RE2 regex pattern applied to existing values when action is ReplaceRegexMatch.
                 minLength: 1
                 maxLength: 1024
               substitution:
                 type: string
                 x-wso2-policy-advanced-param: true
-                description: Replace value using capture groups like \1.
+                description: Replacement string used with pattern. Capture groups can be referenced as \1, \2, etc.
                 maxLength: 2048
             required:
               - action
@@ -242,7 +242,7 @@ parameters:
     methodRewrite:
       type: string
       x-wso2-policy-advanced-param: false
-      description: Rewrite request HTTP method.
+      description: HTTP method to forward upstream after rewrite.
       enum:
         - GET
         - POST

@@ -66,9 +66,9 @@ parameters:
           x-wso2-policy-advanced-param: false
           description: |
             Extract content with JSONPath before byte-length validation.
-            Defaults to "$.messages[-1].content" (last message content).
+            Defaults to "$.choices[0].message.content" (assistant response content).
             Set to "" to validate the full payload string.
-          default: "$.messages[-1].content"
+          default: "$.choices[0].message.content"
         invert:
           type: boolean
           x-wso2-policy-advanced-param: true

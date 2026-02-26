@@ -97,8 +97,14 @@ func TestGetPolicy_RequestRedactForcesResponseRedact(t *testing.T) {
 	if !p.requestParams.RedactPII {
 		t.Fatalf("expected request redactPII to be true")
 	}
+	if p.requestParams.JsonPath != RequestDefaultJSONPath {
+		t.Fatalf("expected request jsonPath default %q, got %q", RequestDefaultJSONPath, p.requestParams.JsonPath)
+	}
 	if !p.responseParams.RedactPII {
 		t.Fatalf("expected response redactPII to be forced true when request redactPII is true")
+	}
+	if p.responseParams.JsonPath != ResponseDefaultJSONPath {
+		t.Fatalf("expected response jsonPath default %q, got %q", ResponseDefaultJSONPath, p.responseParams.JsonPath)
 	}
 }
 
@@ -126,22 +132,22 @@ func TestValidateAWSConfigParams_RoleRegionRequirement(t *testing.T) {
 }
 
 func TestParseRequestResponseParams_TypeValidation(t *testing.T) {
-	_, err := parseRequestResponseParams(map[string]interface{}{"jsonPath": 10})
+	_, err := parseRequestResponseParams(map[string]interface{}{"jsonPath": 10}, false)
 	if err == nil || !strings.Contains(err.Error(), "'jsonPath' must be a string") {
 		t.Fatalf("expected jsonPath type error, got: %v", err)
 	}
 
-	_, err = parseRequestResponseParams(map[string]interface{}{"redactPII": "true"})
+	_, err = parseRequestResponseParams(map[string]interface{}{"redactPII": "true"}, false)
 	if err == nil || !strings.Contains(err.Error(), "'redactPII' must be a boolean") {
 		t.Fatalf("expected redactPII type error, got: %v", err)
 	}
 
-	_, err = parseRequestResponseParams(map[string]interface{}{"passthroughOnError": "true"})
+	_, err = parseRequestResponseParams(map[string]interface{}{"passthroughOnError": "true"}, false)
 	if err == nil || !strings.Contains(err.Error(), "'passthroughOnError' must be a boolean") {
 		t.Fatalf("expected passthroughOnError type error, got: %v", err)
 	}
 
-	_, err = parseRequestResponseParams(map[string]interface{}{"showAssessment": "true"})
+	_, err = parseRequestResponseParams(map[string]interface{}{"showAssessment": "true"}, false)
 	if err == nil || !strings.Contains(err.Error(), "'showAssessment' must be a boolean") {
 		t.Fatalf("expected showAssessment type error, got: %v", err)
 	}

@@ -30,10 +30,11 @@ import (
 )
 
 const (
-	GuardrailErrorCode = 422
-	TextCleanRegex     = "^\"|\"$"
-	WordSplitRegex     = "\\s+"
-	DefaultJSONPath    = "$.messages[-1].content"
+	GuardrailErrorCode      = 422
+	TextCleanRegex          = "^\"|\"$"
+	WordSplitRegex          = "\\s+"
+	DefaultJSONPath         = "$.messages[-1].content"
+	DefaultResponseJSONPath = "$.choices[0].message.content"
 )
 
 var (
@@ -68,7 +69,7 @@ func GetPolicy(
 		return nil, err
 	}
 	if hasRequest {
-		requestParams, err := parseParams(requestParamsRaw)
+		requestParams, err := parseParams(requestParamsRaw, false)
 		if err != nil {
 			return nil, fmt.Errorf("invalid request parameters: %w", err)
 		}
@@ -81,7 +82,7 @@ func GetPolicy(
 		return nil, err
 	}
 	if hasResponse {
-		responseParams, err := parseParams(responseParamsRaw)
+		responseParams, err := parseParams(responseParamsRaw, true)
 		if err != nil {
 			return nil, fmt.Errorf("invalid response parameters: %w", err)
 		}
@@ -112,9 +113,12 @@ func getFlowParams(params map[string]interface{}, flow string) (map[string]inter
 }
 
 // parseParams parses and validates parameters from map to struct
-func parseParams(params map[string]interface{}) (WordCountGuardrailPolicyParams, error) {
+func parseParams(params map[string]interface{}, isResponse bool) (WordCountGuardrailPolicyParams, error) {
 	result := WordCountGuardrailPolicyParams{
 		JsonPath: DefaultJSONPath,
+	}
+	if isResponse {
+		result.JsonPath = DefaultResponseJSONPath
 	}
 
 	// Validate and extract min parameter (required)

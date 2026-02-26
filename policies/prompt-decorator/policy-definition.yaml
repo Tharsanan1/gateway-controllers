@@ -9,7 +9,7 @@ parameters:
   properties:
     promptDecoratorConfig:
       type: object
-      x-wso2-policy-advanced-param: true
+      x-wso2-policy-advanced-param: false
       description: |
         Specifies prompt decoration configuration. Provide exactly one of
         `text` or `messages`.
@@ -34,7 +34,7 @@ parameters:
             properties:
               role:
                 type: string
-                x-wso2-policy-advanced-param: true
+                x-wso2-policy-advanced-param: false
                 enum:
                   - system
                   - user
@@ -42,7 +42,7 @@ parameters:
                   - tool
               content:
                 type: string
-                x-wso2-policy-advanced-param: true
+                x-wso2-policy-advanced-param: false
                 minLength: 1
             required:
               - role

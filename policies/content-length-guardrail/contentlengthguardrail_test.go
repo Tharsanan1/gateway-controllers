@@ -124,8 +124,9 @@ func TestParseParams(t *testing.T) {
 				"max": 10,
 			},
 			expected: ContentLengthGuardrailPolicyParams{
-				Min: 1,
-				Max: 10,
+				Min:      1,
+				Max:      10,
+				JsonPath: DefaultJSONPath,
 			},
 		},
 		{
@@ -149,7 +150,7 @@ func TestParseParams(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := parseParams(tc.input)
+			got, err := parseParams(tc.input, false)
 			if tc.expectErr {
 				if err == nil {
 					t.Fatalf("expected error, got nil")
@@ -166,6 +167,14 @@ func TestParseParams(t *testing.T) {
 				t.Fatalf("expected %+v, got %+v", tc.expected, got)
 			}
 		})
+	}
+
+	responseDefaults, err := parseParams(map[string]interface{}{"min": 1, "max": 10}, true)
+	if err != nil {
+		t.Fatalf("unexpected response defaults parse error: %v", err)
+	}
+	if responseDefaults.JsonPath != DefaultResponseJSONPath {
+		t.Fatalf("expected response default jsonPath %q, got %q", DefaultResponseJSONPath, responseDefaults.JsonPath)
 	}
 }
 
@@ -211,6 +220,9 @@ func TestGetPolicy(t *testing.T) {
 				if p.requestParams.Min != 1 || p.requestParams.Max != 10 {
 					t.Fatalf("unexpected request params: %+v", p.requestParams)
 				}
+				if p.requestParams.JsonPath != DefaultJSONPath {
+					t.Fatalf("expected default request jsonPath %q, got %q", DefaultJSONPath, p.requestParams.JsonPath)
+				}
 			},
 		},
 		{
@@ -224,6 +236,9 @@ func TestGetPolicy(t *testing.T) {
 				}
 				if p.responseParams.Min != 2 || p.responseParams.Max != 20 {
 					t.Fatalf("unexpected response params: %+v", p.responseParams)
+				}
+				if p.responseParams.JsonPath != DefaultResponseJSONPath {
+					t.Fatalf("expected default response jsonPath %q, got %q", DefaultResponseJSONPath, p.responseParams.JsonPath)
 				}
 			},
 		},
