@@ -16,7 +16,8 @@ The policy operates on three types of MCP capabilities: tools, resources, and pr
 - **Prompt-Level Access Control**: Manage access to specific prompts using configurable access modes.
 - **Flexible ACL Modes**: Support both allow-with-exceptions and deny-with-exceptions patterns.
 - **List Filtering**: Filter list responses to only include capabilities that match the access control rules.
-- **Request Path Enforcement**: Enforce the same allow/deny rules on request paths, rejecting access to denied capabilities.
+- **Request Enforcement Scope**: Enforce allow/deny checks only for MCP request actions `tools/call`, `resources/read`, and `prompts/get`.
+- **Response Filtering Scope**: Filter MCP list responses only when the action is `tools/list`, `resources/list`, or `prompts/list`.
 
 ## Configuration
 
@@ -32,13 +33,15 @@ These parameters are configured per MCP Proxy by the API developer:
 | `resources` | `ResourceACLConfig` object | No | ACL configuration for resources. |
 | `prompts` | `PromptACLConfig` object | No | ACL configuration for prompts. |
 
+At least one of `tools`, `resources`, or `prompts` must be provided.
+
 ### ToolACLConfig Configuration
 
 Each `ToolACLConfig` object supports the following fields:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `mode` | string | Yes | ACL mode for tools: `allow` (allow all except listed exceptions) or `deny` (deny all except listed exceptions). |
+| `mode` | string | No | ACL mode for tools: `allow` (allow all except listed exceptions) or `deny` (deny all except listed exceptions). Defaults to `deny` when omitted. |
 | `exceptions` | string array | No | List of tool names that are exceptions to the selected mode. Tool names must be 1-256 characters. |
 
 ### ResourceACLConfig Configuration
@@ -47,7 +50,7 @@ Each `ResourceACLConfig` object supports the following fields:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `mode` | string | Yes | ACL mode for resources: `allow` (allow all except listed exceptions) or `deny` (deny all except listed exceptions). |
+| `mode` | string | No | ACL mode for resources: `allow` (allow all except listed exceptions) or `deny` (deny all except listed exceptions). Defaults to `deny` when omitted. |
 | `exceptions` | string array | No | List of resource URIs that are exceptions to the selected mode. Resource URIs must be 1-2048 characters. |
 
 ### PromptACLConfig Configuration
@@ -56,16 +59,25 @@ Each `PromptACLConfig` object supports the following fields:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `mode` | string | Yes | ACL mode for prompts: `allow` (allow all except listed exceptions) or `deny` (deny all except listed exceptions). |
+| `mode` | string | No | ACL mode for prompts: `allow` (allow all except listed exceptions) or `deny` (deny all except listed exceptions). Defaults to `deny` when omitted. |
 | `exceptions` | string array | No | List of prompt names that are exceptions to the selected mode. Prompt names must be 1-256 characters. |
 
 
 
-For each capability type (tools, resources, prompts):
+For each configured capability type (tools, resources, prompts):
 
 - **Missing capability config**: All capabilities of that type are allowed (no restrictions).
+- **mode omitted**: Defaults to `deny`.
 - **mode: allow, exceptions: [...]**: Allow all capabilities except those listed in exceptions.
 - **mode: deny, exceptions: [...]**: Deny all capabilities except those listed in exceptions.
+
+### Enforcement Scope Matrix
+
+| Phase | Applied Actions | Behavior |
+|-------|------------------|----------|
+| Request | `tools/call`, `resources/read`, `prompts/get` | Reject disallowed requests with JSON-RPC error response. |
+| Response | `tools/list`, `resources/list`, `prompts/list` | Filter list entries that are not allowed by ACL. |
+| Other MCP Actions | Any action outside the above set | No ACL enforcement or response filtering by this policy. |
 
 **Note:**
 
@@ -195,4 +207,3 @@ Combine with authentication and authorization policies to implement role-based a
 
 **Operational governance**
 Control costs and risk by restricting access to expensive, experimental, or beta features during rollout phases.
-

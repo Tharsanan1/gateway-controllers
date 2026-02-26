@@ -9,6 +9,19 @@ The MCP Rewrite policy enables API administrators to expose user-facing names fo
 
 When a list is provided for a capability type, only the configured capabilities are included in list responses. Requests for unlisted capabilities are rejected with an appropriate error. The policy rewrites request payloads to use backend capability names when configured, and rewrites list responses to return user-facing values.
 
+### MCP Action Scope
+
+| Direction | MCP Method | Behavior |
+|-----------|------------|----------|
+| Request | `tools/call` | Rewrites `params.name` to configured `target` (if different), and rejects unlisted tools when `tools` is configured. |
+| Request | `resources/read` | Rewrites `params.uri` to configured `target` (if different), and rejects unlisted resources when `resources` is configured. |
+| Request | `prompts/get` | Rewrites `params.name` to configured `target` (if different), and rejects unlisted prompts when `prompts` is configured. |
+| Request | Any other MCP method | No rewrite or filtering is applied. |
+| Response | `tools/list` | Filters to configured tools and rewrites entries to configured user-facing values. |
+| Response | `resources/list` | Filters to configured resources and rewrites entries to configured user-facing values. |
+| Response | `prompts/list` | Filters to configured prompts and rewrites entries to configured user-facing values. |
+| Response | Any non-`*/list` MCP response | No rewrite or filtering is applied. |
+
 ## Features
 
 - **Tool Rewriting**: Define user-facing tool names and map them to backend tool names with custom schemas and descriptions.
@@ -27,9 +40,9 @@ These parameters are configured per MCP Proxy by the API developer:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `tools` | `ToolRewriteConfig` array | No | List of tools to expose and optionally rewrite. When provided (non-empty), only these tools are included in `tools/list` responses. |
-| `resources` | `ResourceRewriteConfig` array | No | List of resources to expose and optionally rewrite. When provided (non-empty), only these resources are included in `resources/list` responses. |
-| `prompts` | `PromptRewriteConfig` array | No | List of prompts to expose and optionally rewrite. When provided (non-empty), only these prompts are included in `prompts/list` responses. |
+| `tools` | `ToolRewriteConfig` array | No | List of tools to expose and optionally rewrite. Omit to allow all tools, set `[]` to deny all tools, or provide entries to allow only configured tools in `tools/list` and `tools/call`. |
+| `resources` | `ResourceRewriteConfig` array | No | List of resources to expose and optionally rewrite. Omit to allow all resources, set `[]` to deny all resources, or provide entries to allow only configured resources in `resources/list` and `resources/read`. |
+| `prompts` | `PromptRewriteConfig` array | No | List of prompts to expose and optionally rewrite. Omit to allow all prompts, set `[]` to deny all prompts, or provide entries to allow only configured prompts in `prompts/list` and `prompts/get`. |
 
 ### ToolRewriteConfig Configuration
 
@@ -173,4 +186,3 @@ spec:
   tools:
     ...
 ```
-

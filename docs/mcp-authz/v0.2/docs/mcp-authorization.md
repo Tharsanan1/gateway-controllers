@@ -15,10 +15,10 @@ The MCP Authorization policy provides fine-grained access control for Model Cont
 - **Resource-Level Access Control**: Control access to specific MCP resources based on authorization rules
 - **Prompt-Level Access Control**: Manage access to specific MCP prompts
 - **JSON-RPC Method-Level Access Control**: Apply authorization rules at the JSON-RPC method level (e.g., `tools/call`, `resources/read`, `prompts/get`) for fine-grained control. Only methods under `tools/`, `resources/`, and `prompts/` are evaluated.
-- **Flexible Rule-Based Authorization**: Define multiple authorization rules with attribute matching (exact or wildcard)
+- **Flexible Rule-Based Authorization**: Define multiple authorization rules with exact-name matching or full wildcard (`*`) matching
 - **Claim-Based Validation**: Validate custom claims (e.g., department, role, team) in user tokens
 - **Scope-Based Validation**: Require specific OAuth scopes for accessing protected resources
-- **Wildcard Matching**: Use wildcard patterns ("*") to create default rules for all resources of a type
+- **Wildcard Matching**: Use full wildcard (`*`) to create default rules for all resources of a type
 
 ## Configuration
 
@@ -36,20 +36,22 @@ These parameters are configured per MCP Proxy by the API developer:
 
 Each `MCPAuthRule` object supports the following fields:
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `attribute` | `Attribute` object | Yes | The MCP resource attribute to which this authorization rule applies. |
-| `requiredScopes` | string array | No | List of OAuth scopes required to access this resource. The token must contain all specified scopes. |
-| `requiredClaims` | object | No | Map of claim names to expected values. All specified claims must be present in the token with matching values. |
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `attribute` | `Attribute` object | Yes | - | The MCP resource attribute to which this authorization rule applies. |
+| `requiredScopes` | string array | No | `[]` | List of OAuth scopes required to access this resource. The token must contain all specified scopes. |
+| `requiredClaims` | object | No | `{}` | Map of claim names to expected values. All specified claims must be present in the token with matching values. |
+
+Each rule must include at least one non-empty authorization condition (`requiredClaims` and/or `requiredScopes`).
 
 ### Attribute Configuration
 
 Each `Attribute` object supports the following fields:
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `type` | string | Yes | Type of MCP resource: `tool`, `resource`, `prompt`, `method`. |
-| `name` | string | No | Name or identifier of the resource. Use `"*"` for wildcard matching (applies to all resources of the specified type). Examples: `list_files` for tools, `file:///some_resource` for resources, `weather_summary` for prompts, `tools/call` for methods. |
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `type` | string | Yes | - | Type of MCP resource: `tool`, `resource`, `prompt`, `method`. |
+| `name` | string | No | `"*"` | Name or identifier of the resource. Matching supports exact names or full wildcard `"*"` only (no prefix patterns such as `file:///finance/*`). Examples: `list_files` for tools, `file:///some_resource` for resources, `weather_summary` for prompts, `tools/call` for methods. |
 
 **Note:**
 
@@ -257,7 +259,7 @@ spec:
           # Resource access for finance department
           - attribute:
               type: resource
-              name: "file:///finance/*"
+              name: "file:///finance/quarterly-report"
             requiredClaims:
               department: "finance"
             requiredScopes:

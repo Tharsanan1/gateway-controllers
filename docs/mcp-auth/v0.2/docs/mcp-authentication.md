@@ -35,7 +35,7 @@ Each key manager in the `keymanagers` array supports the following structure:
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | Yes | Unique name for this key manager (used in user-level `issuers` configuration). |
-| `issuer` | string | No | Optional issuer (iss) value associated with keys from this provider. |
+| `issuer` | string | Yes | Issuer (iss) value associated with keys from this provider. |
 | `jwks.remote.uri` | string | Conditional | JWKS endpoint URL. Required if using remote JWKS. |
 | `jwks.remote.certificatePath` | string | No | Path to CA certificate file for validating self-signed JWKS endpoints. |
 | `jwks.remote.skipTlsVerify` | boolean | No | If true, skip TLS certificate verification. Use with caution. |
@@ -87,11 +87,11 @@ These parameters are configured per-API/route by the API developer:
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `issuers` | array | No | - | List of issuer names (referencing entries in `system.keymanagers`). This list is sent as `authorization_servers` in the protected resource metadata response. If omitted, all configured key managers are used. |
-| `requiredScopes` | array | No | - | List of scopes that should be included in the token. These are also advertised in the protected resource metadata. |
-| `audiences` | array | No | - | List of acceptable audience values; token must contain at least one. |
-| `requiredClaims` | object | No | - | Map of claimName → expectedValue for custom claim validation. |
-| `claimMappings` | object | No | - | Map of claimName → downstream header name to expose claims for downstream services. |
+| `issuers` | array | No | `[]` | List of issuer names (referencing entries in `system.keymanagers`). This list is sent as `authorization_servers` in the protected resource metadata response. If omitted, all configured key managers are used. |
+| `requiredScopes` | array | No | `[]` | List of scopes that should be included in the token. These are also advertised in the protected resource metadata. |
+| `audiences` | array | No | `[]` | List of acceptable audience values; token must contain at least one. |
+| `requiredClaims` | object | No | `{}` | Map of claimName → expectedValue for custom claim validation. |
+| `claimMappings` | object | No | `{}` | Map of claimName → downstream header name to expose claims for downstream services. |
 
 **Note:**
 
