@@ -34,15 +34,22 @@ const (
 )
 
 // JSONXMLMediationPolicy mediates request/response payloads between JSON and XML.
-type JSONXMLMediationPolicy struct{}
-
-var ins = &JSONXMLMediationPolicy{}
+type JSONXMLMediationPolicy struct {
+	upstreamFormat string
+}
 
 func GetPolicy(
 	metadata policy.PolicyMetadata,
 	params map[string]interface{},
 ) (policy.Policy, error) {
-	return ins, nil
+	upstreamFormat, err := getUpstreamFormat(params)
+	if err != nil {
+		return nil, err
+	}
+
+	return &JSONXMLMediationPolicy{
+		upstreamFormat: upstreamFormat,
+	}, nil
 }
 
 // Mode returns the processing mode for this policy.
@@ -56,19 +63,14 @@ func (p *JSONXMLMediationPolicy) Mode() policy.ProcessingMode {
 }
 
 // OnRequest applies conversion to match the configured upstream format.
-func (p *JSONXMLMediationPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
-	upstreamFormat, err := getUpstreamFormat(params)
-	if err != nil {
-		return p.handleInternalServerError(err.Error())
-	}
-
+func (p *JSONXMLMediationPolicy) OnRequest(ctx *policy.RequestContext, _ map[string]interface{}) policy.RequestAction {
 	if ctx.Body == nil || !ctx.Body.Present || len(ctx.Body.Content) == 0 {
 		return policy.UpstreamRequestModifications{}
 	}
 
 	contentType := getFirstHeader(ctx.Headers, "content-type")
 
-	switch upstreamFormat {
+	switch p.upstreamFormat {
 	case upstreamFormatXML:
 		if !strings.Contains(contentType, "application/json") {
 			return p.handleInternalServerError("Content-Type must be application/json when upstreamFormat is xml")
@@ -109,12 +111,7 @@ func (p *JSONXMLMediationPolicy) OnRequest(ctx *policy.RequestContext, params ma
 }
 
 // OnResponse applies the reverse conversion automatically.
-func (p *JSONXMLMediationPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
-	upstreamFormat, err := getUpstreamFormat(params)
-	if err != nil {
-		return p.handleInternalServerErrorResponse(err.Error())
-	}
-
+func (p *JSONXMLMediationPolicy) OnResponse(ctx *policy.ResponseContext, _ map[string]interface{}) policy.ResponseAction {
 	if ctx.ResponseBody == nil || !ctx.ResponseBody.Present || len(ctx.ResponseBody.Content) == 0 {
 		return policy.UpstreamResponseModifications{}
 	}
@@ -122,7 +119,7 @@ func (p *JSONXMLMediationPolicy) OnResponse(ctx *policy.ResponseContext, params 
 	contentType := getFirstHeader(ctx.ResponseHeaders, "content-type")
 
 	// Apply reverse conversion in response flow.
-	switch upstreamFormat {
+	switch p.upstreamFormat {
 	case upstreamFormatXML:
 		// Upstream expects XML, so response from upstream must be XML->JSON.
 		if !strings.Contains(contentType, "application/xml") && !strings.Contains(contentType, "text/xml") {

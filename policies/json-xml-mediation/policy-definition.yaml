@@ -17,4 +17,5 @@ parameters:
 
 systemParameters:
   type: object
+  additionalProperties: false
   properties: {}

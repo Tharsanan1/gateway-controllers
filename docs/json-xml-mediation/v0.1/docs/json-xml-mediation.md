@@ -14,8 +14,8 @@ Use this when backend and client payload formats differ, and you want one policy
 - Converts request payloads based on one parameter
 - Automatically applies the inverse conversion on responses
 - Supports both directions:
-  - `xml` on request and `json` on response
-  - `json` on request and `xml` on response
+  - `upstreamFormat: xml` converts request `JSON -> XML` and response `XML -> JSON`
+  - `upstreamFormat: json` converts request `XML -> JSON` and response `JSON -> XML`
 - Updates `content-type` and `content-length` after transformation
 - Returns `500` with JSON error payload when conversion fails
 

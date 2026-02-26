@@ -23,22 +23,86 @@ func parseErrorJSON(t *testing.T, body []byte) map[string]interface{} {
 	return out
 }
 
+func newConfiguredPolicy(t *testing.T, upstreamFormat string) *JSONXMLMediationPolicy {
+	t.Helper()
+
+	p, err := GetPolicy(policy.PolicyMetadata{}, map[string]interface{}{"upstreamFormat": upstreamFormat})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	typed, ok := p.(*JSONXMLMediationPolicy)
+	if !ok {
+		t.Fatalf("expected *JSONXMLMediationPolicy, got %T", p)
+	}
+
+	return typed
+}
+
 func TestGetPolicy(t *testing.T) {
-	p1, err := GetPolicy(policy.PolicyMetadata{}, nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	p := newConfiguredPolicy(t, " XML ")
+	if p.upstreamFormat != upstreamFormatXML {
+		t.Fatalf("expected normalized upstream format %q, got %q", upstreamFormatXML, p.upstreamFormat)
 	}
-	p2, err := GetPolicy(policy.PolicyMetadata{}, map[string]interface{}{})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+
+	p2 := newConfiguredPolicy(t, "json")
+	if p2.upstreamFormat != upstreamFormatJSON {
+		t.Fatalf("expected upstream format %q, got %q", upstreamFormatJSON, p2.upstreamFormat)
 	}
-	if p1 != p2 {
-		t.Fatalf("expected singleton instance")
+
+	if p == p2 {
+		t.Fatalf("expected distinct policy instances per configuration")
+	}
+}
+
+func TestGetPolicy_InvalidUpstreamFormatConfig(t *testing.T) {
+	cases := []struct {
+		name      string
+		params    map[string]interface{}
+		expectMsg string
+	}{
+		{
+			name:      "nil params",
+			params:    nil,
+			expectMsg: "upstreamFormat must be a non-empty string",
+		},
+		{
+			name:      "missing upstreamFormat",
+			params:    map[string]interface{}{},
+			expectMsg: "upstreamFormat must be a non-empty string",
+		},
+		{
+			name:      "empty upstreamFormat",
+			params:    map[string]interface{}{"upstreamFormat": ""},
+			expectMsg: "upstreamFormat must be a non-empty string",
+		},
+		{
+			name:      "invalid enum value",
+			params:    map[string]interface{}{"upstreamFormat": "yaml"},
+			expectMsg: "upstreamFormat must be one of [xml, json]",
+		},
+		{
+			name:      "invalid type",
+			params:    map[string]interface{}{"upstreamFormat": true},
+			expectMsg: "upstreamFormat must be a non-empty string",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := GetPolicy(policy.PolicyMetadata{}, tc.params)
+			if err == nil {
+				t.Fatalf("expected error for params %#v", tc.params)
+			}
+			if !strings.Contains(err.Error(), tc.expectMsg) {
+				t.Fatalf("expected error containing %q, got %q", tc.expectMsg, err.Error())
+			}
+		})
 	}
 }
 
 func TestMode(t *testing.T) {
-	p := &JSONXMLMediationPolicy{}
+	p := newConfiguredPolicy(t, "xml")
 	mode := p.Mode()
 	expected := policy.ProcessingMode{
 		RequestHeaderMode:  policy.HeaderModeProcess,
@@ -52,13 +116,13 @@ func TestMode(t *testing.T) {
 }
 
 func TestOnRequest_JSONToXML_Success(t *testing.T) {
-	p := &JSONXMLMediationPolicy{}
+	p := newConfiguredPolicy(t, "xml")
 	ctx := &policy.RequestContext{
 		Body:    &policy.Body{Content: []byte(`{"name":"John","age":30}`), Present: true},
 		Headers: createHeaders("content-type", "application/json"),
 	}
 
-	result := p.OnRequest(ctx, map[string]interface{}{"upstreamFormat": "xml"})
+	result := p.OnRequest(ctx, nil)
 	mods, ok := result.(policy.UpstreamRequestModifications)
 	if !ok {
 		t.Fatalf("expected UpstreamRequestModifications, got %T", result)
@@ -75,13 +139,13 @@ func TestOnRequest_JSONToXML_Success(t *testing.T) {
 }
 
 func TestOnRequest_XMLToJSON_Success(t *testing.T) {
-	p := &JSONXMLMediationPolicy{}
+	p := newConfiguredPolicy(t, "json")
 	ctx := &policy.RequestContext{
 		Body:    &policy.Body{Content: []byte(`<root><name>John</name><age>30</age></root>`), Present: true},
 		Headers: createHeaders("content-type", "text/xml; charset=utf-8"),
 	}
 
-	result := p.OnRequest(ctx, map[string]interface{}{"upstreamFormat": "json"})
+	result := p.OnRequest(ctx, nil)
 	mods, ok := result.(policy.UpstreamRequestModifications)
 	if !ok {
 		t.Fatalf("expected UpstreamRequestModifications, got %T", result)
@@ -99,13 +163,13 @@ func TestOnRequest_XMLToJSON_Success(t *testing.T) {
 }
 
 func TestOnResponse_Reverse_JSONToXML_RequestMeans_XMLToJSON_Response(t *testing.T) {
-	p := &JSONXMLMediationPolicy{}
+	p := newConfiguredPolicy(t, "xml")
 	ctx := &policy.ResponseContext{
 		ResponseBody:    &policy.Body{Content: []byte(`<root><status>ok</status></root>`), Present: true},
 		ResponseHeaders: createHeaders("content-type", "application/xml"),
 	}
 
-	result := p.OnResponse(ctx, map[string]interface{}{"upstreamFormat": "xml"})
+	result := p.OnResponse(ctx, nil)
 	mods, ok := result.(policy.UpstreamResponseModifications)
 	if !ok {
 		t.Fatalf("expected UpstreamResponseModifications, got %T", result)
@@ -123,13 +187,13 @@ func TestOnResponse_Reverse_JSONToXML_RequestMeans_XMLToJSON_Response(t *testing
 }
 
 func TestOnResponse_Reverse_XMLToJSON_RequestMeans_JSONToXML_Response(t *testing.T) {
-	p := &JSONXMLMediationPolicy{}
+	p := newConfiguredPolicy(t, "json")
 	ctx := &policy.ResponseContext{
 		ResponseBody:    &policy.Body{Content: []byte(`{"status":"ok"}`), Present: true},
 		ResponseHeaders: createHeaders("content-type", "application/json; charset=utf-8"),
 	}
 
-	result := p.OnResponse(ctx, map[string]interface{}{"upstreamFormat": "json"})
+	result := p.OnResponse(ctx, nil)
 	mods, ok := result.(policy.UpstreamResponseModifications)
 	if !ok {
 		t.Fatalf("expected UpstreamResponseModifications, got %T", result)
@@ -142,47 +206,15 @@ func TestOnResponse_Reverse_XMLToJSON_RequestMeans_JSONToXML_Response(t *testing
 	}
 }
 
-func TestInvalidUpstreamFormatConfig(t *testing.T) {
-	p := &JSONXMLMediationPolicy{}
-	ctxReq := &policy.RequestContext{Body: &policy.Body{Content: []byte(`{"x":1}`), Present: true}, Headers: createHeaders("content-type", "application/json")}
-	ctxResp := &policy.ResponseContext{ResponseBody: &policy.Body{Content: []byte(`<x>1</x>`), Present: true}, ResponseHeaders: createHeaders("content-type", "application/xml")}
-
-	cases := []map[string]interface{}{
-		{},
-		{"upstreamFormat": ""},
-		{"upstreamFormat": "invalid"},
-		{"upstreamFormat": true},
-	}
-
-	for i, params := range cases {
-		reqResult := p.OnRequest(ctxReq, params)
-		immediate, ok := reqResult.(policy.ImmediateResponse)
-		if !ok {
-			t.Fatalf("case %d: expected ImmediateResponse, got %T", i, reqResult)
-		}
-		if immediate.StatusCode != 500 {
-			t.Fatalf("case %d: expected status 500, got %d", i, immediate.StatusCode)
-		}
-
-		respResult := p.OnResponse(ctxResp, params)
-		respMods, ok := respResult.(policy.UpstreamResponseModifications)
-		if !ok {
-			t.Fatalf("case %d: expected UpstreamResponseModifications, got %T", i, respResult)
-		}
-		if respMods.StatusCode == nil || *respMods.StatusCode != 500 {
-			t.Fatalf("case %d: expected response status 500, got %#v", i, respMods.StatusCode)
-		}
-	}
-}
-
 func TestOnRequest_ContentTypeAndPayloadErrors(t *testing.T) {
-	p := &JSONXMLMediationPolicy{}
+	pXML := newConfiguredPolicy(t, "xml")
+	pJSON := newConfiguredPolicy(t, "json")
 
 	wrongTypeCtx := &policy.RequestContext{
 		Body:    &policy.Body{Content: []byte(`{"name":"x"}`), Present: true},
 		Headers: createHeaders("content-type", "application/xml"),
 	}
-	res := p.OnRequest(wrongTypeCtx, map[string]interface{}{"upstreamFormat": "xml"})
+	res := pXML.OnRequest(wrongTypeCtx, nil)
 	immediate, ok := res.(policy.ImmediateResponse)
 	if !ok || immediate.StatusCode != 500 {
 		t.Fatalf("expected 500 ImmediateResponse for wrong content type, got %T %#v", res, res)
@@ -192,7 +224,7 @@ func TestOnRequest_ContentTypeAndPayloadErrors(t *testing.T) {
 		Body:    &policy.Body{Content: []byte(`{"name":`), Present: true},
 		Headers: createHeaders("content-type", "application/json"),
 	}
-	res = p.OnRequest(invalidJSONCtx, map[string]interface{}{"upstreamFormat": "xml"})
+	res = pXML.OnRequest(invalidJSONCtx, nil)
 	immediate, ok = res.(policy.ImmediateResponse)
 	if !ok || immediate.StatusCode != 500 {
 		t.Fatalf("expected 500 ImmediateResponse for invalid JSON, got %T %#v", res, res)
@@ -202,7 +234,7 @@ func TestOnRequest_ContentTypeAndPayloadErrors(t *testing.T) {
 		Body:    &policy.Body{Content: []byte(`<root><name>x</root>`), Present: true},
 		Headers: createHeaders("content-type", "application/xml"),
 	}
-	res = p.OnRequest(invalidXMLCtx, map[string]interface{}{"upstreamFormat": "json"})
+	res = pJSON.OnRequest(invalidXMLCtx, nil)
 	immediate, ok = res.(policy.ImmediateResponse)
 	if !ok || immediate.StatusCode != 500 {
 		t.Fatalf("expected 500 ImmediateResponse for invalid XML, got %T %#v", res, res)
@@ -215,13 +247,14 @@ func TestOnRequest_ContentTypeAndPayloadErrors(t *testing.T) {
 }
 
 func TestOnResponse_ContentTypeAndPayloadErrors(t *testing.T) {
-	p := &JSONXMLMediationPolicy{}
+	pXML := newConfiguredPolicy(t, "xml")
+	pJSON := newConfiguredPolicy(t, "json")
 
 	wrongTypeCtx := &policy.ResponseContext{
 		ResponseBody:    &policy.Body{Content: []byte(`<root/>`), Present: true},
 		ResponseHeaders: createHeaders("content-type", "application/json"),
 	}
-	res := p.OnResponse(wrongTypeCtx, map[string]interface{}{"upstreamFormat": "xml"})
+	res := pXML.OnResponse(wrongTypeCtx, nil)
 	mods, ok := res.(policy.UpstreamResponseModifications)
 	if !ok || mods.StatusCode == nil || *mods.StatusCode != 500 {
 		t.Fatalf("expected 500 UpstreamResponseModifications for wrong content type, got %T %#v", res, res)
@@ -231,7 +264,7 @@ func TestOnResponse_ContentTypeAndPayloadErrors(t *testing.T) {
 		ResponseBody:    &policy.Body{Content: []byte(`{"x":`), Present: true},
 		ResponseHeaders: createHeaders("content-type", "application/json"),
 	}
-	res = p.OnResponse(invalidJSONCtx, map[string]interface{}{"upstreamFormat": "json"})
+	res = pJSON.OnResponse(invalidJSONCtx, nil)
 	mods, ok = res.(policy.UpstreamResponseModifications)
 	if !ok || mods.StatusCode == nil || *mods.StatusCode != 500 {
 		t.Fatalf("expected 500 UpstreamResponseModifications for invalid JSON, got %T %#v", res, res)
@@ -241,7 +274,7 @@ func TestOnResponse_ContentTypeAndPayloadErrors(t *testing.T) {
 		ResponseBody:    &policy.Body{Content: []byte(`<root><x></root>`), Present: true},
 		ResponseHeaders: createHeaders("content-type", "application/xml"),
 	}
-	res = p.OnResponse(invalidXMLCtx, map[string]interface{}{"upstreamFormat": "xml"})
+	res = pXML.OnResponse(invalidXMLCtx, nil)
 	mods, ok = res.(policy.UpstreamResponseModifications)
 	if !ok || mods.StatusCode == nil || *mods.StatusCode != 500 {
 		t.Fatalf("expected 500 UpstreamResponseModifications for invalid XML, got %T %#v", res, res)
@@ -254,13 +287,13 @@ func TestOnResponse_ContentTypeAndPayloadErrors(t *testing.T) {
 }
 
 func TestNoBodyPassThrough(t *testing.T) {
-	p := &JSONXMLMediationPolicy{}
+	p := newConfiguredPolicy(t, "xml")
 
 	reqCtx := &policy.RequestContext{
 		Body:    &policy.Body{Content: []byte{}, Present: false},
 		Headers: createHeaders("content-type", "application/json"),
 	}
-	reqResult := p.OnRequest(reqCtx, map[string]interface{}{"upstreamFormat": "xml"})
+	reqResult := p.OnRequest(reqCtx, nil)
 	reqMods, ok := reqResult.(policy.UpstreamRequestModifications)
 	if !ok {
 		t.Fatalf("expected UpstreamRequestModifications, got %T", reqResult)
@@ -273,7 +306,7 @@ func TestNoBodyPassThrough(t *testing.T) {
 		ResponseBody:    &policy.Body{Content: []byte{}, Present: false},
 		ResponseHeaders: createHeaders("content-type", "application/xml"),
 	}
-	respResult := p.OnResponse(respCtx, map[string]interface{}{"upstreamFormat": "xml"})
+	respResult := p.OnResponse(respCtx, nil)
 	respMods, ok := respResult.(policy.UpstreamResponseModifications)
 	if !ok {
 		t.Fatalf("expected UpstreamResponseModifications, got %T", respResult)
@@ -284,7 +317,7 @@ func TestNoBodyPassThrough(t *testing.T) {
 }
 
 func TestConversionHelpers(t *testing.T) {
-	p := &JSONXMLMediationPolicy{}
+	p := newConfiguredPolicy(t, "xml")
 
 	xmlData, err := p.convertJSONBytesToXML([]byte(`{"a":1}`))
 	if err != nil {
