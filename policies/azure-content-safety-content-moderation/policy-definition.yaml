@@ -17,8 +17,9 @@ parameters:
           type: string
           x-wso2-policy-advanced-param: true
           description: |
-            Specifies the JSONPath used to extract content for moderation. When
-            empty, the entire payload is evaluated as plain text.
+            Extract text with JSONPath for moderation.
+            Defaults to "$.messages[-1].content" (last message content).
+            Set to "" for full payload text.
           default: "$.messages[-1].content"
         passthroughOnError:
           type: boolean
@@ -79,8 +80,9 @@ parameters:
           type: string
           x-wso2-policy-advanced-param: true
           description: |
-            Specifies the JSONPath used to extract content for moderation. When
-            empty, the entire payload is evaluated as plain text.
+            Extract text with JSONPath for moderation.
+            Defaults to "$.messages[-1].content" (last message content).
+            Set to "" for full payload text.
           default: "$.messages[-1].content"
         passthroughOnError:
           type: boolean

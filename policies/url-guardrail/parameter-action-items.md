@@ -1,6 +1,6 @@
 # Parameter Action Items
 Policy: url-guardrail
-Source: /Users/tharsanan/Documents/worktrees/gateway-controllers/fi-priorotized-policies/policies/url-guardrail
+Source: policies/url-guardrail
 
 ## 1) `<policy.description>`
 - Priority: Medium

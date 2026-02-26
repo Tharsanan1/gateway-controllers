@@ -404,25 +404,7 @@ func (p *JSONXMLMediationPolicy) processXMLNode(node XMLNode) interface{} {
 }
 
 func (p *JSONXMLMediationPolicy) parseAttributeValue(value string) interface{} {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return ""
-	}
-
-	if value == "true" {
-		return true
-	}
-	if value == "false" {
-		return false
-	}
-
-	if strings.Contains(value, ".") {
-		if floatVal, err := strconv.ParseFloat(value, 64); err == nil {
-			return floatVal
-		}
-	}
-
-	return value
+	return p.parseValue(value)
 }
 
 func (p *JSONXMLMediationPolicy) parseValue(value string) interface{} {

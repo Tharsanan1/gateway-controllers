@@ -27,9 +27,9 @@ parameters:
           type: string
           x-wso2-policy-advanced-param: false
           description: |
-            JSONPath expression to extract a specific value from JSON payload.
-            If empty, validates the entire payload as a string.
-            Examples: "$.messages", "$.data.content", "$.items[0].text"
+            Extract content using JSONPath from the JSON payload.
+            Defaults to "$.messages[-1].content" (last message content).
+            Set to an empty string ("") to validate the full payload string.
           default: "$.messages[-1].content"
         invert:
           type: boolean
@@ -68,9 +68,9 @@ parameters:
           type: string
           x-wso2-policy-advanced-param: false
           description: |
-            JSONPath expression to extract a specific value from JSON payload.
-            If empty, validates the entire payload as a string.
-            Examples: "$.messages", "$.data.content", "$.items[0].text"
+            Extract content using JSONPath from the JSON payload.
+            Defaults to "$.messages[-1].content" (last message content).
+            Set to an empty string ("") to validate the full payload string.
           default: "$.messages[-1].content"
         invert:
           type: boolean

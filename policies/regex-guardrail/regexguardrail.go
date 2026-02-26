@@ -29,7 +29,7 @@ import (
 
 const (
 	GuardrailErrorCode = 422
-	DefaultJSONPath    = "$.messages"
+	DefaultJSONPath    = "$.messages[-1].content"
 )
 
 // RegexGuardrailPolicy implements regex-based content validation

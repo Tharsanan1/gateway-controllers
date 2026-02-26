@@ -276,7 +276,7 @@ func extractStringFromJSONPath(payload []byte, jsonPath string) (string, error) 
 
 	var jsonData map[string]interface{}
 	if unmarshalErr := json.Unmarshal(payload, &jsonData); unmarshalErr != nil {
-		return "", err
+		return "", unmarshalErr
 	}
 
 	extracted, extractErr := utils.ExtractValueFromJsonpath(jsonData, jsonPath)
@@ -286,7 +286,7 @@ func extractStringFromJSONPath(payload []byte, jsonPath string) (string, error) 
 
 	normalized, normalizeErr := normalizeExtractedValue(extracted)
 	if normalizeErr != nil {
-		return "", err
+		return "", normalizeErr
 	}
 
 	return normalized, nil

@@ -55,8 +55,8 @@ parameters:
           type: boolean
           x-wso2-policy-advanced-param: true
           description: |
-            If true, allows requests to proceed if AWS Bedrock Guardrail API call fails.
-            If false (default), blocks requests on API errors.
+            If true, allows responses to proceed if AWS Bedrock Guardrail API call fails.
+            If false (default), blocks responses on API errors.
           default: false
         showAssessment:
           type: boolean

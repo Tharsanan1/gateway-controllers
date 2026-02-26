@@ -16,9 +16,9 @@ parameters:
         jsonPath:
           type: string
           description: |
-            JSONPath expression to extract a specific value from JSON payload for validation.
-            If empty, validates the entire payload against the schema.
-            Examples: "$.data", "$.userInfo", "$.items[0]"
+            Extract JSON with JSONPath before schema validation.
+            Defaults to "$.messages[-1].content" (last message content).
+            Set to "" to validate the full payload against the schema.
           default: "$.messages[-1].content"
         invert:
           type: boolean
@@ -46,9 +46,9 @@ parameters:
         jsonPath:
           type: string
           description: |
-            JSONPath expression to extract a specific value from JSON payload for validation.
-            If empty, validates the entire payload against the schema.
-            Examples: "$.data", "$.userInfo", "$.items[0]"
+            Extract JSON with JSONPath before schema validation.
+            Defaults to "$.messages[-1].content" (last message content).
+            Set to "" to validate the full payload against the schema.
           default: "$.messages[-1].content"
         invert:
           type: boolean
