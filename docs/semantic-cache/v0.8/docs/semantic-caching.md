@@ -77,7 +77,7 @@ vector_db_provider_ttl = 3600
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `similarityThreshold` | number | Yes | - | Similarity threshold for cache hits (0.0 to 1.0). Higher values require more similarity. For example, 0.9 means 90% similarity required. Recommended: 0.85-0.95 for strict matching, 0.70-0.85 for more flexible matching. |
-| `jsonPath` | string | No | `""` | JSONPath expression to extract text from request body for embedding generation. If empty, uses the entire request body. Example: `"$.messages[0].content"` to extract the first message's content. |
+| `jsonPath` | string | No | `$.messages[-1].content` | JSONPath expression to extract text from request body for embedding generation. Use `""` to use the entire request body. Example: `"$.messages[0].content"` to extract the first message's content. |
 
 #### JSONPath Support
 
@@ -92,7 +92,7 @@ The policy supports JSONPath expressions to extract specific text from request b
 - `$.messages[-1].content` - Last message's content
 - `$.prompt` - Extract prompt field from completions API
 - `$.input` - Extract input field from embeddings API
-- `$` - Entire request body (default if jsonPath is not specified)
+- `$` - Entire request body
 
 **Note:**
 

@@ -32,7 +32,7 @@ This policy uses a single-level configuration where all parameters are configure
 |-----------|------|----------|---------|-------------|
 | `min` | integer | Yes | - | Minimum allowed byte length (inclusive). Must be >= 0. |
 | `max` | integer | Yes | - | Maximum allowed byte length (inclusive). Must be >= 1. |
-| `jsonPath` | string | No | `""` | JSONPath expression to extract a specific value from JSON payload. If empty, validates the entire payload as a string. |
+| `jsonPath` | string | No | `$.messages[-1].content` | JSONPath expression to extract a specific value from JSON payload. Use `""` to validate the entire payload as a string. |
 | `invert` | boolean | No | `false` | If `true`, validation passes when content length is NOT within the min-max range. If `false`, validation passes when content length is within the range. |
 | `showAssessment` | boolean | No | `false` | If `true`, includes detailed assessment information in error responses. |
 
@@ -44,8 +44,9 @@ The guardrail supports JSONPath expressions to extract and validate specific fie
 - `$.data.content` - Extracts nested content from `data.content`
 - `$.items[0].text` - Extracts text from the first item in an array
 - `$.messages[0].content` - Extracts content from the first message in a messages array
+- `$.messages[-1].content` - Extracts content from the last message in a messages array
 
-If `jsonPath` is empty or not specified, the entire payload is treated as a string and validated.
+If `jsonPath` is not specified, `$.messages[-1].content` is used. Set `jsonPath: ""` to validate the entire payload as a string.
 
 **Note:**
 

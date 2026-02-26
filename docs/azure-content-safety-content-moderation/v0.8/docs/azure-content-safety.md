@@ -55,7 +55,7 @@ azurecontentsafety_key = "<your-azure-content-safety-key>"
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `jsonPath` | string | No | `""` | JSONPath expression to extract a specific value from JSON payload. If empty, validates the entire payload as a string. |
+| `jsonPath` | string | No | `$.messages[-1].content` | JSONPath expression to extract a specific value from JSON payload. Use `""` to validate the entire payload as a string. |
 | `passthroughOnError` | boolean | No | `false` | If `true`, allows traffic to proceed if Azure Content Safety API call fails. If `false`, blocks on API errors. |
 | `showAssessment` | boolean | No | `false` | If `true`, includes detailed assessment information in error responses. |
 | `hateCategory` | integer | No | `-1` | Severity threshold for hate category (0-7). `-1` disables this category. Content with severity >= threshold will be blocked. |
@@ -74,7 +74,7 @@ The guardrail supports JSONPath expressions to extract and validate specific fie
 - `$.messages[-1].content` - Extracts content from the last message in a messages array
 - `$.choices[0].message.content` - Extracts assistant response content
 
-If `jsonPath` is empty or not specified, the entire payload is treated as a string and validated.
+If `jsonPath` is not specified, `$.messages[-1].content` is used. Set `jsonPath: ""` to validate the entire payload as a string.
 
 **Note:**
 

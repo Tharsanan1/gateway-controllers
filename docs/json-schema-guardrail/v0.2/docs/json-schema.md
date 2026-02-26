@@ -31,7 +31,7 @@ This policy uses a single-level configuration model where all parameters are con
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `schema` | string | Yes | - | JSON Schema as a string (must be valid JSON). Supports JSON Schema Draft 7 features. |
-| `jsonPath` | string | No | `""` | JSONPath expression to extract a specific value from JSON payload for validation. If empty, validates the entire payload against the schema. |
+| `jsonPath` | string | No | `$.messages[-1].content` | JSONPath expression to extract a specific value from JSON payload for validation. Use `""` to validate the entire payload against the schema. |
 | `invert` | boolean | No | `false` | If `true`, validation passes when schema validation fails. If `false`, validation passes when schema validation succeeds. |
 | `showAssessment` | boolean | No | `false` | If `true`, includes detailed validation error information in error responses. |
 
@@ -43,8 +43,9 @@ The guardrail supports JSONPath expressions to extract and validate specific fie
 - `$.userInfo` - Extracts user information object
 - `$.items[0]` - Extracts the first item in an array
 - `$.messages[0]` - Extracts the first message object
+- `$.messages[-1].content` - Extracts content from the last message in a messages array
 
-If `jsonPath` is empty or not specified, the entire payload is validated against the schema.
+If `jsonPath` is not specified, `$.messages[-1].content` is used. Set `jsonPath: ""` to validate the entire payload against the schema.
 
 **Note:**
 

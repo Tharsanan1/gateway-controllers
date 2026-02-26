@@ -30,7 +30,7 @@ This policy requires only a single-level configuration where all parameters are 
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `jsonPath` | string | No | `$.messages` | JSONPath expression to extract a specific value from JSON payload. Use `""` to validate the entire payload as a string. |
+| `jsonPath` | string | No | `$.messages[-1].content` | JSONPath expression to extract a specific value from JSON payload. Use `""` to validate the entire payload as a string. |
 | `onlyDNS` | boolean | No | `false` | If `true`, validates URLs only via DNS resolution (faster, less reliable). If `false`, validates URLs via HTTP HEAD request (slower, more reliable). |
 | `timeout` | integer | No | `3000` | Timeout in milliseconds for DNS lookup or HTTP HEAD request. Default is 3000ms (3 seconds). |
 | `showAssessment` | boolean | No | `false` | If `true`, includes detailed assessment information including invalid URLs in error responses. |
@@ -43,8 +43,9 @@ The guardrail supports JSONPath expressions to extract and validate specific fie
 - `$.data.content` - Extracts nested content from `data.content`
 - `$.items[0].text` - Extracts text from the first item in an array
 - `$.messages[0].content` - Extracts content from the first message in a messages array
+- `$.messages[-1].content` - Extracts content from the last message in a messages array
 
-If `jsonPath` is not specified, `$.messages` is used. Set `jsonPath: ""` to validate the entire payload as a string.
+If `jsonPath` is not specified, `$.messages[-1].content` is used. Set `jsonPath: ""` to validate the entire payload as a string.
 
 **Note:**
 
