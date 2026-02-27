@@ -15,7 +15,7 @@ parameters:
       properties:
         headers:
           type: array
-          x-wso2-policy-advanced-param: true
+          x-wso2-policy-advanced-param: false
           description: List of header match conditions. Every condition must match for rewrites to run.
           minItems: 1
           items:
@@ -24,12 +24,12 @@ parameters:
             properties:
               name:
                 type: string
-                x-wso2-policy-advanced-param: true
+                x-wso2-policy-advanced-param: false
                 description: Header name to evaluate. Matching is case-insensitive.
                 minLength: 1
               type:
                 type: string
-                x-wso2-policy-advanced-param: true
+                x-wso2-policy-advanced-param: flase
                 description: "How to evaluate the header: Exact value, RE2 Regex, or only presence."
                 enum:
                   - Exact
@@ -37,7 +37,7 @@ parameters:
                   - Present
               value:
                 type: string
-                x-wso2-policy-advanced-param: true
+                x-wso2-policy-advanced-param: false
                 description: Header value or regex pattern used when type is Exact or Regex.
                 minLength: 1
                 maxLength: 2048
@@ -54,7 +54,7 @@ parameters:
                   required: [value]
         queryParams:
           type: array
-          x-wso2-policy-advanced-param: true
+          x-wso2-policy-advanced-param: false
           description: List of query parameter match conditions. Every condition must match for rewrites to run.
           minItems: 1
           items:
@@ -63,12 +63,12 @@ parameters:
             properties:
               name:
                 type: string
-                x-wso2-policy-advanced-param: true
+                x-wso2-policy-advanced-param: false
                 description: Query parameter name to evaluate.
                 minLength: 1
               type:
                 type: string
-                x-wso2-policy-advanced-param: true
+                x-wso2-policy-advanced-param: false
                 description: "How to evaluate the query parameter: Exact value, RE2 Regex, or only presence."
                 enum:
                   - Exact
@@ -76,7 +76,7 @@ parameters:
                   - Present
               value:
                 type: string
-                x-wso2-policy-advanced-param: true
+                x-wso2-policy-advanced-param: false
                 description: Parameter value or regex pattern used when type is Exact or Regex.
                 minLength: 1
                 maxLength: 2048
@@ -203,19 +203,19 @@ parameters:
                 maxLength: 2048
               separator:
                 type: string
-                x-wso2-policy-advanced-param: true
+                x-wso2-policy-advanced-param: false
                 description: String inserted between existing and appended values when action is Append.
                 default: ""
                 maxLength: 64
               pattern:
                 type: string
-                x-wso2-policy-advanced-param: true
+                x-wso2-policy-advanced-param: false
                 description: RE2 regex pattern applied to existing values when action is ReplaceRegexMatch.
                 minLength: 1
                 maxLength: 1024
               substitution:
                 type: string
-                x-wso2-policy-advanced-param: true
+                x-wso2-policy-advanced-param: false
                 description: Replacement string used with pattern. Capture groups can be referenced as \1, \2, etc.
                 maxLength: 2048
             required:
