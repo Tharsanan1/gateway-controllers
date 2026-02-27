@@ -175,16 +175,17 @@ parameters:
         rules:
           type: array
           x-wso2-policy-advanced-param: false
-          description: Query rewrite rules executed from first to last.
+          description: Ordered query rewrite rules. Each rule runs on the output produced by previous rules.
           minItems: 1
           items:
             type: object
+            description: Single query rewrite rule.
             additionalProperties: false
             properties:
               action:
                 type: string
                 x-wso2-policy-advanced-param: false
-                description: "Rule behavior: Replace, Remove, Add, Append, or ReplaceRegexMatch."
+                description: Operation to apply. Replace overwrites values, Remove deletes values, Add adds a value, Append concatenates text to each existing value, and ReplaceRegexMatch rewrites existing values using regex.
                 enum:
                   - Replace
                   - Remove
@@ -194,29 +195,29 @@ parameters:
               name:
                 type: string
                 x-wso2-policy-advanced-param: false
-                description: Query parameter name this rule targets.
+                description: Query parameter name to modify.
                 minLength: 1
               value:
                 type: string
                 x-wso2-policy-advanced-param: false
-                description: Value to set or append when action is Replace, Add, or Append.
+                description: Value used by Replace, Add, or Append. Replace sets this value, Add appends another value entry, and Append concatenates this text to current values.
                 maxLength: 2048
               separator:
                 type: string
                 x-wso2-policy-advanced-param: false
-                description: String inserted between existing and appended values when action is Append.
+                description: Text inserted between each existing value and value during Append. If empty, values are joined directly.
                 default: ""
                 maxLength: 64
               pattern:
                 type: string
                 x-wso2-policy-advanced-param: false
-                description: RE2 regex pattern applied to existing values when action is ReplaceRegexMatch.
+                description: RE2 regex pattern used by ReplaceRegexMatch to match text in each existing parameter value.
                 minLength: 1
                 maxLength: 1024
               substitution:
                 type: string
                 x-wso2-policy-advanced-param: false
-                description: Replacement string used with pattern. Capture groups can be referenced as \1, \2, etc.
+                description: Replacement template used with pattern in ReplaceRegexMatch. Capture groups can be referenced as \1, \2, and so on.
                 maxLength: 2048
             required:
               - action
