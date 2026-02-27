@@ -353,6 +353,82 @@ func TestApplyQueryRewrite(t *testing.T) {
 			t.Fatalf("expected error for invalid regex pattern")
 		}
 	})
+
+	t.Run("ordered multi-rule behavior on same key", func(t *testing.T) {
+		tests := []struct {
+			name     string
+			initial  url.Values
+			rules    []queryRule
+			expected url.Values
+		}{
+			{
+				name:    "remove then add keeps added value",
+				initial: url.Values{"mode": {"old"}},
+				rules: []queryRule{
+					{Action: "Remove", Name: "mode"},
+					{Action: "Add", Name: "mode", Value: "new"},
+				},
+				expected: url.Values{"mode": {"new"}},
+			},
+			{
+				name:    "add then remove clears all values",
+				initial: url.Values{"mode": {"old"}},
+				rules: []queryRule{
+					{Action: "Add", Name: "mode", Value: "new"},
+					{Action: "Remove", Name: "mode"},
+				},
+				expected: url.Values{},
+			},
+			{
+				name:    "append then replace collapses to single value",
+				initial: url.Values{"id": {"1", "2"}},
+				rules: []queryRule{
+					{Action: "Append", Name: "id", Value: "x", Separator: "-"},
+					{Action: "Replace", Name: "id", Value: "final"},
+				},
+				expected: url.Values{"id": {"final"}},
+			},
+			{
+				name:    "regex rewrite applies after add on all values",
+				initial: url.Values{"tag": {"alpha"}},
+				rules: []queryRule{
+					{Action: "Add", Name: "tag", Value: "beta"},
+					{Action: "ReplaceRegexMatch", Name: "tag", Pattern: `^(.*)$`, Substitution: `p-\1`},
+				},
+				expected: url.Values{"tag": {"p-alpha", "p-beta"}},
+			},
+			{
+				name:    "regex rewrite on missing key is no-op",
+				initial: url.Values{},
+				rules: []queryRule{
+					{Action: "ReplaceRegexMatch", Name: "missing", Pattern: `^x$`, Substitution: `y`},
+				},
+				expected: url.Values{},
+			},
+			{
+				name:    "mixed-case actions are accepted",
+				initial: url.Values{"q": {"a"}},
+				rules: []queryRule{
+					{Action: "aDd", Name: "q", Value: "b"},
+					{Action: "ApPeNd", Name: "q", Value: "x", Separator: "-"},
+				},
+				expected: url.Values{"q": {"a-x", "b-x"}},
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				values := tt.initial
+				err := applyQueryRewrite(values, &queryRewrite{Rules: tt.rules})
+				if err != nil {
+					t.Fatalf("applyQueryRewrite failed: %v", err)
+				}
+				if !reflect.DeepEqual(values, tt.expected) {
+					t.Fatalf("unexpected query values: got %#v want %#v", values, tt.expected)
+				}
+			})
+		}
+	})
 }
 
 func TestPathHelpers(t *testing.T) {
@@ -605,6 +681,70 @@ func TestOnRequestQueryRewriteInvalidRegexReturnsImmediateResponse(t *testing.T)
 			"rules": []interface{}{
 				map[string]interface{}{"action": "ReplaceRegexMatch", "name": "id", "pattern": "[", "substitution": "x"},
 			},
+		},
+	})
+	resp := mustImmediateResponse(t, action)
+	if resp.StatusCode != 500 {
+		t.Fatalf("expected status 500, got %d", resp.StatusCode)
+	}
+	assertConfigErrorBody(t, resp.Body)
+}
+
+func TestOnRequestQueryRewriteOrderedRulesExtensive(t *testing.T) {
+	p := &RequestRewritePolicy{}
+	ctx := &policy.RequestContext{
+		SharedContext: &policy.SharedContext{
+			APIContext: "/v1",
+		},
+		Headers: newHeaders(nil),
+		Path:    "/v1/items?a=1&a=2&b=raw&c=keep",
+	}
+	action := p.OnRequest(ctx, map[string]interface{}{
+		"queryRewrite": map[string]interface{}{
+			"rules": []interface{}{
+				map[string]interface{}{"action": "Remove", "name": "c"},
+				map[string]interface{}{"action": "Append", "name": "a", "value": "x", "separator": "-"},
+				map[string]interface{}{"action": "ReplaceRegexMatch", "name": "a", "pattern": `^([0-9]+)-x$`, "substitution": `n-\1`},
+				map[string]interface{}{"action": "Add", "name": "a", "value": "n-3"},
+				map[string]interface{}{"action": "Replace", "name": "b", "value": "clean"},
+			},
+		},
+	})
+	mods := mustRequestMods(t, action)
+	path, query := parsePathQuery(t, mods.SetHeaders[":path"])
+	if path != "/v1/items" {
+		t.Fatalf("unexpected path after query rewrite: %q", path)
+	}
+	if got := query["a"]; !reflect.DeepEqual(got, []string{"n-1", "n-2", "n-3"}) {
+		t.Fatalf("unexpected a values: %#v", got)
+	}
+	if query.Get("b") != "clean" {
+		t.Fatalf("unexpected b value: %#v", query["b"])
+	}
+	if _, exists := query["c"]; exists {
+		t.Fatalf("expected c to be removed, got %#v", query)
+	}
+}
+
+func TestOnRequestQueryRewriteMultiRuleFailureReturnsImmediateResponse(t *testing.T) {
+	p := &RequestRewritePolicy{}
+	ctx := &policy.RequestContext{
+		SharedContext: &policy.SharedContext{
+			APIContext: "/v1",
+		},
+		Headers: newHeaders(nil),
+		Path:    "/v1/search?tag=old",
+	}
+	action := p.OnRequest(ctx, map[string]interface{}{
+		"queryRewrite": map[string]interface{}{
+			"rules": []interface{}{
+				map[string]interface{}{"action": "Replace", "name": "tag", "value": "new"},
+				map[string]interface{}{"action": "ReplaceRegexMatch", "name": "tag", "pattern": "[", "substitution": "x"},
+			},
+		},
+		"pathRewrite": map[string]interface{}{
+			"type":            "ReplaceFullPath",
+			"replaceFullPath": "/rewritten",
 		},
 	})
 	resp := mustImmediateResponse(t, action)
