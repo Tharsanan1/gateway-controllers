@@ -104,7 +104,7 @@ func TestParseParams(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := parseParams(tc.input)
+			got, err := parseParams(tc.input, DefaultRequestJSONPath)
 			if tc.expectErr {
 				if err == nil {
 					t.Fatalf("expected error, got nil")
@@ -158,6 +158,9 @@ func TestGetPolicy(t *testing.T) {
 	if !p.hasRequestParams || p.hasResponseParams {
 		t.Fatalf("expected request=true response=false, got request=%v response=%v", p.hasRequestParams, p.hasResponseParams)
 	}
+	if p.requestParams.JsonPath != DefaultRequestJSONPath {
+		t.Fatalf("unexpected request jsonPath default: got %q, want %q", p.requestParams.JsonPath, DefaultRequestJSONPath)
+	}
 
 	pRaw, err = GetPolicy(policy.PolicyMetadata{}, map[string]interface{}{
 		"request":  map[string]interface{}{"schema": `{"type":"object"}`},
@@ -172,6 +175,12 @@ func TestGetPolicy(t *testing.T) {
 	}
 	if !p.hasRequestParams || !p.hasResponseParams {
 		t.Fatalf("expected request=true response=true, got request=%v response=%v", p.hasRequestParams, p.hasResponseParams)
+	}
+	if p.requestParams.JsonPath != DefaultRequestJSONPath {
+		t.Fatalf("unexpected request jsonPath default: got %q, want %q", p.requestParams.JsonPath, DefaultRequestJSONPath)
+	}
+	if p.responseParams.JsonPath != DefaultResponseJSONPath {
+		t.Fatalf("unexpected response jsonPath default: got %q, want %q", p.responseParams.JsonPath, DefaultResponseJSONPath)
 	}
 }
 

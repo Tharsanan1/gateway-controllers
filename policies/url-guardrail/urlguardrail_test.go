@@ -75,7 +75,7 @@ func TestParseParams(t *testing.T) {
 			name:  "valid defaults",
 			input: map[string]interface{}{},
 			expected: URLGuardrailPolicyParams{
-				JsonPath: DefaultJSONPath,
+				JsonPath: DefaultRequestJSONPath,
 				Timeout:  DefaultTimeout,
 			},
 		},
@@ -128,7 +128,7 @@ func TestParseParams(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := parseParams(tc.input)
+			got, err := parseParams(tc.input, DefaultRequestJSONPath)
 			if tc.expectErr {
 				if err == nil {
 					t.Fatalf("expected error, got nil")
@@ -206,6 +206,9 @@ func TestGetPolicy(t *testing.T) {
 				if p.requestParams.Timeout != 1000 {
 					t.Fatalf("unexpected request timeout: %d", p.requestParams.Timeout)
 				}
+				if p.requestParams.JsonPath != DefaultRequestJSONPath {
+					t.Fatalf("unexpected request jsonPath: %s", p.requestParams.JsonPath)
+				}
 			},
 		},
 		{
@@ -219,6 +222,9 @@ func TestGetPolicy(t *testing.T) {
 				}
 				if p.responseParams.Timeout != 1200 {
 					t.Fatalf("unexpected response timeout: %d", p.responseParams.Timeout)
+				}
+				if p.responseParams.JsonPath != DefaultResponseJSONPath {
+					t.Fatalf("unexpected response jsonPath: %s", p.responseParams.JsonPath)
 				}
 			},
 		},

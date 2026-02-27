@@ -29,7 +29,8 @@ import (
 
 const (
 	GuardrailErrorCode = 422
-	DefaultJSONPath    = "$.messages[-1].content"
+	DefaultRequestJSONPath  = "$.messages[-1].content"
+	DefaultResponseJSONPath = "$.choices[0].message.content"
 )
 
 // RegexGuardrailPolicy implements regex-based content validation
@@ -55,7 +56,7 @@ func GetPolicy(
 
 	// Extract and parse request parameters if present
 	if requestParamsRaw, ok := params["request"].(map[string]interface{}); ok {
-		requestParams, err := parseParams(requestParamsRaw)
+		requestParams, err := parseParams(requestParamsRaw, DefaultRequestJSONPath)
 		if err != nil {
 			return nil, fmt.Errorf("invalid request parameters: %w", err)
 		}
@@ -65,7 +66,7 @@ func GetPolicy(
 
 	// Extract and parse response parameters if present
 	if responseParamsRaw, ok := params["response"].(map[string]interface{}); ok {
-		responseParams, err := parseParams(responseParamsRaw)
+		responseParams, err := parseParams(responseParamsRaw, DefaultResponseJSONPath)
 		if err != nil {
 			return nil, fmt.Errorf("invalid response parameters: %w", err)
 		}
@@ -84,9 +85,9 @@ func GetPolicy(
 }
 
 // parseParams parses and validates parameters from map to struct
-func parseParams(params map[string]interface{}) (RegexGuardrailPolicyParams, error) {
+func parseParams(params map[string]interface{}, defaultJSONPath string) (RegexGuardrailPolicyParams, error) {
 	result := RegexGuardrailPolicyParams{
-		JsonPath:       DefaultJSONPath,
+		JsonPath:       defaultJSONPath,
 		Invert:         false,
 		ShowAssessment: false,
 	}

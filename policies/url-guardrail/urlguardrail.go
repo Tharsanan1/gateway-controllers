@@ -38,7 +38,8 @@ const (
 	TextCleanRegex     = "^\"|\"$"
 	URLRegex           = "https?://[^\\s,\"'{}\\[\\]\\\\`*]+"
 	DefaultTimeout     = 3000 // milliseconds
-	DefaultJSONPath    = "$.messages[-1].content"
+	DefaultRequestJSONPath  = "$.messages[-1].content"
+	DefaultResponseJSONPath = "$.choices[0].message.content"
 )
 
 var (
@@ -72,7 +73,7 @@ func GetPolicy(
 		return nil, err
 	}
 	if hasRequest {
-		requestParams, err := parseParams(requestParamsRaw)
+		requestParams, err := parseParams(requestParamsRaw, DefaultRequestJSONPath)
 		if err != nil {
 			return nil, fmt.Errorf("invalid request parameters: %w", err)
 		}
@@ -85,7 +86,7 @@ func GetPolicy(
 		return nil, err
 	}
 	if hasResponse {
-		responseParams, err := parseParams(responseParamsRaw)
+		responseParams, err := parseParams(responseParamsRaw, DefaultResponseJSONPath)
 		if err != nil {
 			return nil, fmt.Errorf("invalid response parameters: %w", err)
 		}
@@ -116,9 +117,9 @@ func getFlowParams(params map[string]interface{}, flow string) (map[string]inter
 }
 
 // parseParams parses and validates parameters from map to struct
-func parseParams(params map[string]interface{}) (URLGuardrailPolicyParams, error) {
+func parseParams(params map[string]interface{}, defaultJSONPath string) (URLGuardrailPolicyParams, error) {
 	result := URLGuardrailPolicyParams{
-		JsonPath: DefaultJSONPath,
+		JsonPath: defaultJSONPath,
 	}
 
 	// Extract optional jsonPath parameter

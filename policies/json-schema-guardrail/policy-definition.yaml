@@ -47,9 +47,9 @@ parameters:
           type: string
           description: |
             Extract JSON with JSONPath before schema validation.
-            Defaults to "$.messages[-1].content" (last message content).
+            Defaults to "$.choices[0].message.content" (first choice message content).
             Set to "" to validate the full payload against the schema.
-          default: "$.messages[-1].content"
+          default: "$.choices[0].message.content"
         invert:
           type: boolean
           x-wso2-policy-advanced-param: true
