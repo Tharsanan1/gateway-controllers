@@ -93,6 +93,16 @@ func TestOnResponseReturnsNil(t *testing.T) {
 }
 
 func TestParseConfig(t *testing.T) {
+	t.Run("nil params", func(t *testing.T) {
+		cfg, err := parseConfig(nil)
+		if err != nil {
+			t.Fatalf("parseConfig failed: %v", err)
+		}
+		if cfg != nil {
+			t.Fatalf("expected nil config for nil params")
+		}
+	})
+
 	t.Run("empty params", func(t *testing.T) {
 		cfg, err := parseConfig(map[string]interface{}{})
 		if err != nil {
@@ -133,6 +143,15 @@ func TestParseConfig(t *testing.T) {
 			t.Fatalf("expected parseConfig serialization error")
 		}
 	})
+
+	t.Run("parse error from incompatible type", func(t *testing.T) {
+		_, err := parseConfig(map[string]interface{}{
+			"methodRewrite": true,
+		})
+		if err == nil {
+			t.Fatalf("expected parseConfig parse error")
+		}
+	})
 }
 
 func TestMatchHeader(t *testing.T) {
@@ -156,6 +175,7 @@ func TestMatchHeader(t *testing.T) {
 		{name: "regex false", matcher: headerMatcher{Name: "x-trace", Type: "Regex", Value: `^id-[0-9]+$`}, want: false},
 		{name: "invalid regex", matcher: headerMatcher{Name: "x-trace", Type: "Regex", Value: `[`}, want: false},
 		{name: "unsupported type", matcher: headerMatcher{Name: "x-env", Type: "Unknown"}, want: false},
+		{name: "header name case-insensitive", matcher: headerMatcher{Name: "X-Env", Type: "Exact", Value: "prod"}, want: true},
 		{name: "empty name", matcher: headerMatcher{Name: "", Type: "Present"}, want: false},
 	}
 
@@ -229,6 +249,19 @@ func TestMatchesRequest(t *testing.T) {
 	if matchesRequest(ctx, cfg) {
 		t.Fatalf("expected matcher set with missing header to fail")
 	}
+
+	t.Run("malformed path query fallback causes query mismatch", func(t *testing.T) {
+		malformed := &policy.RequestContext{
+			Path:    "/v1/%zz?region=us",
+			Headers: newHeaders(nil),
+		}
+		queryCfg := &matchConfig{
+			QueryParams: []queryParamMatch{{Name: "region", Type: "Exact", Value: "us"}},
+		}
+		if matchesRequest(malformed, queryCfg) {
+			t.Fatalf("expected malformed path query extraction to fail match")
+		}
+	})
 }
 
 func TestApplyPathRewrite(t *testing.T) {
@@ -259,6 +292,13 @@ func TestApplyPathRewrite(t *testing.T) {
 		}
 	})
 
+	t.Run("replace full path empty replacement keeps original", func(t *testing.T) {
+		got := applyPathRewrite(ctx, "/orders/42", &pathRewrite{Type: "ReplaceFullPath", ReplaceFullPath: ""})
+		if got != "/orders/42" {
+			t.Fatalf("expected original path, got %q", got)
+		}
+	})
+
 	t.Run("replace regex", func(t *testing.T) {
 		got := applyPathRewrite(ctx, "/orders/42", &pathRewrite{
 			Type: "ReplaceRegexMatch",
@@ -279,6 +319,40 @@ func TestApplyPathRewrite(t *testing.T) {
 		})
 		if got != "/orders/42" {
 			t.Fatalf("expected original path, got %q", got)
+		}
+	})
+
+	t.Run("replace regex with empty substitution removes match", func(t *testing.T) {
+		got := applyPathRewrite(ctx, "/orders/42", &pathRewrite{
+			Type: "ReplaceRegexMatch",
+			ReplaceRegexMatch: &regexReplacement{
+				Pattern:      `^/orders/[0-9]+$`,
+				Substitution: "",
+			},
+		})
+		if got != "" {
+			t.Fatalf("expected empty rewritten path, got %q", got)
+		}
+	})
+
+	t.Run("replace prefix non-matching path keeps original", func(t *testing.T) {
+		got := applyPathRewrite(ctx, "/users/42", &pathRewrite{Type: "ReplacePrefixMatch", ReplacePrefixMatch: "/customers"})
+		if got != "/users/42" {
+			t.Fatalf("expected original path, got %q", got)
+		}
+	})
+
+	t.Run("replace prefix exact operation path should not rewrite", func(t *testing.T) {
+		got := applyPathRewrite(ctx, "/orders", &pathRewrite{Type: "ReplacePrefixMatch", ReplacePrefixMatch: "/customers"})
+		if got != "/orders" {
+			t.Fatalf("expected exact operation path to remain unchanged, got %q", got)
+		}
+	})
+
+	t.Run("replace prefix boundary mismatch should not rewrite", func(t *testing.T) {
+		got := applyPathRewrite(ctx, "/orders123", &pathRewrite{Type: "ReplacePrefixMatch", ReplacePrefixMatch: "/customers"})
+		if got != "/orders123" {
+			t.Fatalf("expected boundary-safe prefix behavior, got %q", got)
 		}
 	})
 
@@ -405,16 +479,29 @@ func TestApplyQueryRewrite(t *testing.T) {
 				},
 				expected: url.Values{},
 			},
-			{
-				name:    "mixed-case actions are accepted",
-				initial: url.Values{"q": {"a"}},
-				rules: []queryRule{
-					{Action: "aDd", Name: "q", Value: "b"},
-					{Action: "ApPeNd", Name: "q", Value: "x", Separator: "-"},
+				{
+					name:    "mixed-case actions are accepted",
+					initial: url.Values{"q": {"a"}},
+					rules: []queryRule{
+						{Action: "aDd", Name: "q", Value: "b"},
+						{Action: "ApPeNd", Name: "q", Value: "x", Separator: "-"},
+					},
+					expected: url.Values{"q": {"a-x", "b-x"}},
 				},
-				expected: url.Values{"q": {"a-x", "b-x"}},
-			},
-		}
+				{
+					name:    "cross-key chain keeps duplicate values",
+					initial: url.Values{"a": {"1", "2"}},
+					rules: []queryRule{
+						{Action: "ReplaceRegexMatch", Name: "missing", Pattern: `^x$`, Substitution: `y`},
+						{Action: "Add", Name: "b", Value: "new"},
+						{Action: "Remove", Name: "b"},
+						{Action: "Append", Name: "a", Value: "x", Separator: "-"},
+						{Action: "Replace", Name: "a", Value: "final"},
+						{Action: "Add", Name: "a", Value: "tail"},
+					},
+					expected: url.Values{"a": {"final", "tail"}},
+				},
+			}
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -466,8 +553,26 @@ func TestPathHelpers(t *testing.T) {
 	if base != "" || relative != "/v1/orders/1" {
 		t.Fatalf("expected nil context fallback, got base=%q relative=%q", base, relative)
 	}
-	if got := joinBaseAndRelative(base, relative); got != "/v1/orders/1" {
+	base, relative = splitBasePath(&policy.RequestContext{SharedContext: &policy.SharedContext{APIContext: "/"}}, "/v1/orders/1")
+	if base != "" || relative != "/v1/orders/1" {
+		t.Fatalf("expected root API context to be ignored, got base=%q relative=%q", base, relative)
+	}
+	base, relative = splitBasePath(&policy.RequestContext{SharedContext: &policy.SharedContext{APIContext: "v1"}}, "/v1/orders/1")
+	if base != "/v1" || relative != "/orders/1" {
+		t.Fatalf("expected API context normalization, got base=%q relative=%q", base, relative)
+	}
+	base, relative = splitBasePath(&policy.RequestContext{SharedContext: &policy.SharedContext{APIContext: "/v1"}}, "/v2/orders/1")
+	if base != "" || relative != "/v2/orders/1" {
+		t.Fatalf("expected non-prefix path fallback, got base=%q relative=%q", base, relative)
+	}
+	if got := joinBaseAndRelative(base, relative); got != "/v2/orders/1" {
 		t.Fatalf("expected join with empty base to return relative path, got %q", got)
+	}
+	if got := joinBaseAndRelative("/v1", "/"); got != "/v1" {
+		t.Fatalf("expected /v1 for slash-relative join, got %q", got)
+	}
+	if got := joinBaseAndRelative("/v1", "orders/1"); got != "/v1/orders/1" {
+		t.Fatalf("expected /v1/orders/1 for missing slash relative join, got %q", got)
 	}
 	if got := buildPath("/v1/orders/1", url.Values{"x": {"1"}}); got != "/v1/orders/1?x=1" {
 		t.Fatalf("unexpected buildPath result: %q", got)
@@ -752,6 +857,136 @@ func TestOnRequestQueryRewriteMultiRuleFailureReturnsImmediateResponse(t *testin
 		t.Fatalf("expected status 500, got %d", resp.StatusCode)
 	}
 	assertConfigErrorBody(t, resp.Body)
+}
+
+func TestOnRequestQueryRewriteNoOpDoesNotRewritePath(t *testing.T) {
+	p := &RequestRewritePolicy{}
+	ctx := &policy.RequestContext{
+		SharedContext: &policy.SharedContext{
+			APIContext: "/v1",
+		},
+		Headers: newHeaders(nil),
+		Path:    "/v1/search?b=2&a=1",
+	}
+	action := p.OnRequest(ctx, map[string]interface{}{
+		"queryRewrite": map[string]interface{}{
+			"rules": []interface{}{
+				map[string]interface{}{"action": "ReplaceRegexMatch", "name": "missing", "pattern": `^x$`, "substitution": "y"},
+			},
+		},
+	})
+	mods := mustRequestMods(t, action)
+	if got := mods.SetHeaders[":path"]; got != "" {
+		t.Fatalf("expected no path rewrite for semantic no-op query rewrite, got %q", got)
+	}
+}
+
+func TestOnRequestInvalidMatcherRegexSkipsRewrite(t *testing.T) {
+	p := &RequestRewritePolicy{}
+	ctx := &policy.RequestContext{
+		SharedContext: &policy.SharedContext{
+			APIContext:    "/v1",
+			OperationPath: "/orders/*",
+		},
+		Headers: newHeaders(map[string][]string{"x-id": {"123"}}),
+		Path:    "/v1/orders/42?mode=test",
+	}
+	action := p.OnRequest(ctx, map[string]interface{}{
+		"match": map[string]interface{}{
+			"headers": []interface{}{
+				map[string]interface{}{"name": "x-id", "type": "Regex", "value": "["},
+			},
+		},
+		"pathRewrite": map[string]interface{}{
+			"type":            "ReplaceFullPath",
+			"replaceFullPath": "/rewritten",
+		},
+	})
+	mods := mustRequestMods(t, action)
+	if len(mods.SetHeaders) != 0 || len(mods.DynamicMetadata) != 0 {
+		t.Fatalf("expected no modifications when matcher regex is invalid, got %+v", mods)
+	}
+}
+
+func TestOnRequestCombinedRewriteAndMethodWithMatchPass(t *testing.T) {
+	p := &RequestRewritePolicy{}
+	ctx := &policy.RequestContext{
+		SharedContext: &policy.SharedContext{
+			APIContext:    "/v1",
+			OperationPath: "/orders/*",
+		},
+		Headers: newHeaders(map[string][]string{"x-env": {"prod"}}),
+		Path:    "/v1/orders/42?stage=beta&id=1",
+	}
+	action := p.OnRequest(ctx, map[string]interface{}{
+		"match": map[string]interface{}{
+			"headers": []interface{}{
+				map[string]interface{}{"name": "x-env", "type": "Exact", "value": "prod"},
+			},
+			"queryParams": []interface{}{
+				map[string]interface{}{"name": "stage", "type": "Exact", "value": "beta"},
+			},
+		},
+		"pathRewrite": map[string]interface{}{
+			"type":               "ReplacePrefixMatch",
+			"replacePrefixMatch": "/purchases",
+		},
+		"queryRewrite": map[string]interface{}{
+			"rules": []interface{}{
+				map[string]interface{}{"action": "Append", "name": "id", "value": "9", "separator": "-"},
+				map[string]interface{}{"action": "ReplaceRegexMatch", "name": "id", "pattern": `^([0-9]+)-9$`, "substitution": `id-\1`},
+				map[string]interface{}{"action": "Add", "name": "trace", "value": "yes"},
+			},
+		},
+		"methodRewrite": "post",
+	})
+	mods := mustRequestMods(t, action)
+	path, query := parsePathQuery(t, mods.SetHeaders[":path"])
+	if path != "/v1/purchases/42" {
+		t.Fatalf("unexpected combined rewritten path: %q", path)
+	}
+	if got := query["id"]; !reflect.DeepEqual(got, []string{"id-1"}) {
+		t.Fatalf("unexpected id values in combined flow: %#v", got)
+	}
+	if query.Get("stage") != "beta" || query.Get("trace") != "yes" {
+		t.Fatalf("unexpected query values in combined flow: %#v", query)
+	}
+	if mods.DynamicMetadata[dynamicMetadataNamespace]["request_transformation.target_method"] != "POST" {
+		t.Fatalf("expected method rewrite POST in combined flow, got %+v", mods.DynamicMetadata)
+	}
+}
+
+func TestOnRequestCombinedRewriteAndMethodWithMatchFail(t *testing.T) {
+	p := &RequestRewritePolicy{}
+	ctx := &policy.RequestContext{
+		SharedContext: &policy.SharedContext{
+			APIContext:    "/v1",
+			OperationPath: "/orders/*",
+		},
+		Headers: newHeaders(map[string][]string{"x-env": {"dev"}}),
+		Path:    "/v1/orders/42?stage=beta&id=1",
+	}
+	action := p.OnRequest(ctx, map[string]interface{}{
+		"match": map[string]interface{}{
+			"headers": []interface{}{
+				map[string]interface{}{"name": "x-env", "type": "Exact", "value": "prod"},
+			},
+		},
+		"pathRewrite": map[string]interface{}{
+			"type":               "ReplacePrefixMatch",
+			"replacePrefixMatch": "/purchases",
+		},
+		"queryRewrite": map[string]interface{}{
+			"rules": []interface{}{
+				map[string]interface{}{"action": "Replace", "name": "id", "value": "2"},
+			},
+		},
+		"methodRewrite": "post",
+	})
+	mods := mustRequestMods(t, action)
+	if len(mods.SetHeaders) != 0 || len(mods.DynamicMetadata) != 0 {
+		t.Fatalf("expected no modifications when combined flow match fails, got %+v", mods)
+	}
 }
 
 func TestOnRequestMethodRewriteOnly(t *testing.T) {
