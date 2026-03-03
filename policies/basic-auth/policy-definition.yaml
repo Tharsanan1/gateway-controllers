@@ -1,9 +1,7 @@
 name: basic-auth
 version: v0.8.1
 description: |
-  Implements HTTP Basic Authentication to protect APIs with username and password credentials.
-  Validates the Authorization header against configured credentials and sets authentication
-  metadata in the request context for downstream policies to use.
+  Protects APIs using Basic Authentication by validating username and password credentials.
 
 parameters:
   type: object
@@ -11,15 +9,13 @@ parameters:
     username:
       type: string
       x-wso2-policy-advanced-param: false
-      description: Expected username for authentication. Compared against the username
-        in the Basic auth header.
+      description: Expected username
       minLength: 1
       maxLength: 256
     password:
       type: string
       x-wso2-policy-advanced-param: false
-      description: Expected password for authentication. Compared against the password
-        in the Basic auth header.
+      description: Expected password
       minLength: 1
       maxLength: 256
     allowUnauthenticated:

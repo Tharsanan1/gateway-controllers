@@ -1,8 +1,7 @@
 name: analytics-header-filter
 version: v0.2.0
 description: |
-  Filters request and response headers in analytics data using allow or deny modes,
-  without modifying headers sent upstream or returned to clients.
+  Filters request and response headers from analytics data using configurable allow or deny lists.
 
 parameters:
   type: object
@@ -12,12 +11,12 @@ parameters:
       type: object
       x-wso2-policy-advanced-param: false
       additionalProperties: false
-      description: Specifies request header filtering for analytics.
+      description: Specifies the request headers to allow or deny in analytics data.
       properties:
         mode:
           type: string
           x-wso2-policy-advanced-param: false
-          description: Specifies whether listed headers are included or excluded.
+          description: Whether to allow or deny the listed headers.
           enum:
             - allow
             - deny
@@ -25,7 +24,7 @@ parameters:
         headers:
           type: array
           x-wso2-policy-advanced-param: false
-          description: Specifies header names to match case-insensitively.
+          description: Header names to allow or deny. Matching is case-insensitive.
           items:
             type: string
             minLength: 1
@@ -43,7 +42,7 @@ parameters:
         mode:
           type: string
           x-wso2-policy-advanced-param: false
-          description: Specifies whether listed headers are included or excluded.
+          description: Whether to allow or deny the listed headers.
           enum:
             - allow
             - deny
@@ -51,7 +50,7 @@ parameters:
         headers:
           type: array
           x-wso2-policy-advanced-param: false
-          description: Specifies header names to match case-insensitively.
+          description: Header names to allow or deny. Matching is case-insensitive.
           items:
             type: string
             minLength: 1

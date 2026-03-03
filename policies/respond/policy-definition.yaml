@@ -1,7 +1,7 @@
 name: respond
 version: v0.2.0
 description: |
-  Return an immediate response to the client without forwarding upstream, useful for API mocks, controlled error responses, and short-circuit request handling.
+  Return a response directly to the client without forwarding the request to the upstream.
 
 parameters:
   type: object
@@ -10,23 +10,14 @@ parameters:
     statusCode:
       type: integer
       x-wso2-policy-advanced-param: false
-      description: HTTP status code for the response. Defaults to 200 if not specified.
+      description: HTTP status code for the response. 
       minimum: 100
       maximum: 599
       default: 200
-    body:
-      type: string
-      x-wso2-policy-advanced-param: false
-      description: Response body content as a string. Can be plain text, JSON, XML,
-        or any other format. Set appropriate content-type header to indicate the body
-        format.
-      default: ""
-      maxLength: 1048576
     headers:
       type: array
       x-wso2-policy-advanced-param: false
-      description: Array of response headers to include in the response. Each header
-        must have 'name' and 'value' fields.
+      description: Array of response headers to include in the response. 
       default: []
       items:
         type: object
@@ -47,6 +38,13 @@ parameters:
         required:
         - name
         - value
+    body:
+      type: string
+      x-wso2-policy-advanced-param: false
+      description: Response body content
+      default: ""
+      maxLength: 1048576
+    
 
 systemParameters:
   type: object
