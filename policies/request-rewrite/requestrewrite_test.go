@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/url"
 	"reflect"
+	"strings"
 	"testing"
 
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
@@ -1066,5 +1067,161 @@ func TestOnRequestRewriteWithoutSharedContextDoesNotPanic(t *testing.T) {
 	mods := mustRequestMods(t, action)
 	if got := mods.SetHeaders[":path"]; got != "/members/42?view=full" {
 		t.Fatalf("unexpected rewritten path without shared context: %q", got)
+	}
+}
+
+func TestBugHunt_MalformedPathQueryRewriteDoesNotCorruptPath(t *testing.T) {
+	p := &RequestRewritePolicy{}
+	ctx := &policy.RequestContext{
+		SharedContext: &policy.SharedContext{
+			APIContext: "/v1",
+		},
+		Headers: newHeaders(nil),
+		Path:    "/v1/%zz?a=1",
+	}
+
+	action := p.OnRequest(ctx, map[string]interface{}{
+		"queryRewrite": map[string]interface{}{
+			"rules": []interface{}{
+				map[string]interface{}{"action": "Add", "name": "b", "value": "2"},
+			},
+		},
+	})
+	mods := mustRequestMods(t, action)
+	got := mods.SetHeaders[":path"]
+	if strings.Count(got, "?") > 1 {
+		t.Fatalf("BUG: malformed path rewrite produced invalid query delimiter sequence: %q", got)
+	}
+}
+
+func TestBugHunt_QueryRewriteShouldPreserveEncodedPathSegments(t *testing.T) {
+	p := &RequestRewritePolicy{}
+	ctx := &policy.RequestContext{
+		SharedContext: &policy.SharedContext{
+			APIContext: "/v1",
+		},
+		Headers: newHeaders(nil),
+		Path:    "/v1/orders%2F42?x=1",
+	}
+
+	action := p.OnRequest(ctx, map[string]interface{}{
+		"queryRewrite": map[string]interface{}{
+			"rules": []interface{}{
+				map[string]interface{}{"action": "Add", "name": "y", "value": "2"},
+			},
+		},
+	})
+	mods := mustRequestMods(t, action)
+	got := mods.SetHeaders[":path"]
+	if !strings.HasPrefix(got, "/v1/orders%2F42?") {
+		t.Fatalf("BUG: encoded slash in path was normalized/decoded unexpectedly: %q", got)
+	}
+}
+
+func TestBugHunt_QueryRewriteShouldNotInjectControlCharsIntoPath(t *testing.T) {
+	p := &RequestRewritePolicy{}
+	ctx := &policy.RequestContext{
+		SharedContext: &policy.SharedContext{
+			APIContext: "/v1",
+		},
+		Headers: newHeaders(nil),
+		Path:    "/v1/%0Aabc",
+	}
+
+	action := p.OnRequest(ctx, map[string]interface{}{
+		"queryRewrite": map[string]interface{}{
+			"rules": []interface{}{
+				map[string]interface{}{"action": "Add", "name": "x", "value": "1"},
+			},
+		},
+	})
+	mods := mustRequestMods(t, action)
+	got := mods.SetHeaders[":path"]
+	if strings.ContainsRune(got, '\n') || strings.ContainsRune(got, '\r') {
+		t.Fatalf("BUG: rewritten :path contains control character(s): %q", got)
+	}
+}
+
+func TestBugHunt_PathRewriteShouldPreserveOriginalQueryOrdering(t *testing.T) {
+	p := &RequestRewritePolicy{}
+	ctx := &policy.RequestContext{
+		SharedContext: &policy.SharedContext{
+			APIContext:    "/v1",
+			OperationPath: "/orders/*",
+		},
+		Headers: newHeaders(nil),
+		Path:    "/v1/orders/42?b=2&a=1",
+	}
+
+	action := p.OnRequest(ctx, map[string]interface{}{
+		"pathRewrite": map[string]interface{}{
+			"type":            "ReplaceFullPath",
+			"replaceFullPath": "/new",
+		},
+	})
+	mods := mustRequestMods(t, action)
+	got := mods.SetHeaders[":path"]
+	if got != "/v1/new?b=2&a=1" {
+		t.Fatalf("BUG: query ordering changed during path-only rewrite: %q", got)
+	}
+}
+
+func TestBugHunt_InvalidPathRegexShouldReturnConfigError(t *testing.T) {
+	p := &RequestRewritePolicy{}
+	ctx := &policy.RequestContext{
+		SharedContext: &policy.SharedContext{
+			APIContext: "/v1",
+		},
+		Headers: newHeaders(nil),
+		Path:    "/v1/orders/42",
+	}
+
+	action := p.OnRequest(ctx, map[string]interface{}{
+		"pathRewrite": map[string]interface{}{
+			"type": "ReplaceRegexMatch",
+			"replaceRegexMatch": map[string]interface{}{
+				"pattern":      "[",
+				"substitution": "/x",
+			},
+		},
+	})
+
+	if _, ok := action.(policy.ImmediateResponse); !ok {
+		t.Fatalf("BUG: invalid path regex should fail closed with config error, got %T", action)
+	}
+}
+
+func TestBugHunt_UnsupportedPathRewriteTypeShouldReturnConfigError(t *testing.T) {
+	p := &RequestRewritePolicy{}
+	ctx := &policy.RequestContext{
+		SharedContext: &policy.SharedContext{
+			APIContext: "/v1",
+		},
+		Headers: newHeaders(nil),
+		Path:    "/v1/orders/42",
+	}
+
+	action := p.OnRequest(ctx, map[string]interface{}{
+		"pathRewrite": map[string]interface{}{
+			"type":            "TypoRewriteType",
+			"replaceFullPath": "/x",
+		},
+	})
+	if _, ok := action.(policy.ImmediateResponse); !ok {
+		t.Fatalf("BUG: unsupported pathRewrite.type silently ignored, got %T", action)
+	}
+}
+
+func TestBugHunt_NilRequestContextShouldNotPanic(t *testing.T) {
+	p := &RequestRewritePolicy{}
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("BUG: nil RequestContext causes panic: %v", r)
+		}
+	}()
+
+	action := p.OnRequest(nil, map[string]interface{}{"methodRewrite": "GET"})
+	if _, ok := action.(policy.ImmediateResponse); !ok {
+		t.Fatalf("expected fail-closed response for nil context, got %T", action)
 	}
 }

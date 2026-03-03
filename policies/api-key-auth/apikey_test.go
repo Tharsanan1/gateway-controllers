@@ -1,6 +1,8 @@
 package apikey
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -53,11 +55,11 @@ func TestAPIKeyPolicy_OnRequest_SuccessFromHeader(t *testing.T) {
 		"in":  "header",
 	})
 
-	if ctx.SharedContext.AuthContext == nil || !ctx.SharedContext.AuthContext.Authenticated {
-		t.Fatalf("expected AuthContext.Authenticated=true")
+	if ctx.Metadata[MetadataKeyAuthSuccess] != true {
+		t.Fatalf("expected auth.success=true, got %v", ctx.Metadata[MetadataKeyAuthSuccess])
 	}
-	if ctx.SharedContext.AuthContext.AuthType != "apikey" {
-		t.Fatalf("expected AuthType='apikey', got %q", ctx.SharedContext.AuthContext.AuthType)
+	if ctx.Metadata[MetadataKeyAuthMethod] != "api-key" {
+		t.Fatalf("expected auth.method=api-key, got %v", ctx.Metadata[MetadataKeyAuthMethod])
 	}
 	if _, ok := action.(policy.UpstreamRequestModifications); !ok {
 		t.Fatalf("expected UpstreamRequestModifications, got %T", action)
@@ -76,8 +78,8 @@ func TestAPIKeyPolicy_OnRequest_SuccessFromQuery(t *testing.T) {
 		"in":  "query",
 	})
 
-	if ctx.SharedContext.AuthContext == nil || !ctx.SharedContext.AuthContext.Authenticated {
-		t.Fatalf("expected AuthContext.Authenticated=true")
+	if ctx.Metadata[MetadataKeyAuthSuccess] != true {
+		t.Fatalf("expected auth.success=true, got %v", ctx.Metadata[MetadataKeyAuthSuccess])
 	}
 	if _, ok := action.(policy.UpstreamRequestModifications); !ok {
 		t.Fatalf("expected UpstreamRequestModifications, got %T", action)
@@ -121,8 +123,8 @@ func TestAPIKeyPolicy_OnRequest_MissingOrInvalidConfig(t *testing.T) {
 			action := p.OnRequest(ctx, tt.params)
 			assertUnauthorizedJSON(t, action)
 
-			if ctx.SharedContext.AuthContext == nil || ctx.SharedContext.AuthContext.Authenticated {
-				t.Fatalf("expected AuthContext.Authenticated=false")
+			if ctx.Metadata[MetadataKeyAuthSuccess] != false {
+				t.Fatalf("expected auth.success=false, got %v", ctx.Metadata[MetadataKeyAuthSuccess])
 			}
 		})
 	}
@@ -323,15 +325,21 @@ func seedExternalAPIKey(t *testing.T, apiID, plainKey, operations string) {
 		ID:          "id-" + sanitizeTestName(t.Name()),
 		Name:        "name-" + sanitizeTestName(t.Name()),
 		DisplayName: "test-key",
-		APIKey:      apikeycommon.ComputeAPIKeyHash(plainKey),
+		APIKey:      plainKey,
 		APIId:       apiID,
 		Operations:  operations,
 		Status:      apikeycommon.Active,
 		Source:      "external",
+		IndexKey:    hashExternalIndexKey(plainKey),
 	}
 	if err := apikeycommon.GetAPIkeyStoreInstance().StoreAPIKey(apiID, key); err != nil {
 		t.Fatalf("failed to store API key: %v", err)
 	}
+}
+
+func hashExternalIndexKey(v string) string {
+	h := sha256.Sum256([]byte(strings.TrimSpace(v)))
+	return hex.EncodeToString(h[:])
 }
 
 func sanitizeTestName(v string) string {
@@ -340,34 +348,63 @@ func sanitizeTestName(v string) string {
 	return strings.ToLower(v)
 }
 
-func TestAPIKeyPolicy_AuthContext_PreviousPreserved_OnSuccess(t *testing.T) {
-	p := &APIKeyPolicy{}
-	prior := &policy.AuthContext{Authenticated: true, AuthType: "other"}
-	ctx := newRequestContext(t, "GET", "/orders", nil, "api-1", "OrdersAPI", "v1", "/orders")
-	ctx.SharedContext.AuthContext = prior
-
-	p.handleAuthSuccess(ctx)
-
-	if ctx.SharedContext.AuthContext == nil {
-		t.Fatal("Expected AuthContext to be set")
-	}
-	if ctx.SharedContext.AuthContext.Previous != prior {
-		t.Errorf("Expected Previous to point to prior AuthContext, got %v", ctx.SharedContext.AuthContext.Previous)
+func TestBugHunt_ExtractQueryParam_EncodedAmpersandValue(t *testing.T) {
+	got := extractQueryParam("/orders?token=a%26b", "token")
+	if got != "a&b" {
+		t.Fatalf("BUG: encoded ampersand value parsed incorrectly: got %q, want %q", got, "a&b")
 	}
 }
 
-func TestAPIKeyPolicy_AuthContext_PreviousPreserved_OnFailure(t *testing.T) {
-	p := &APIKeyPolicy{}
-	prior := &policy.AuthContext{Authenticated: true, AuthType: "other"}
-	ctx := newRequestContext(t, "GET", "/orders", nil, "api-1", "OrdersAPI", "v1", "/orders")
-	ctx.SharedContext.AuthContext = prior
-
-	p.handleAuthFailure(ctx, 401, "json", "Valid API key required", "invalid API key")
-
-	if ctx.SharedContext.AuthContext == nil {
-		t.Fatal("Expected AuthContext to be set")
+func TestBugHunt_ExtractQueryParam_EncodedQuestionMarkValue(t *testing.T) {
+	got := extractQueryParam("/orders?token=a%3Fb", "token")
+	if got != "a?b" {
+		t.Fatalf("BUG: encoded question-mark value parsed incorrectly: got %q, want %q", got, "a?b")
 	}
-	if ctx.SharedContext.AuthContext.Previous != prior {
-		t.Errorf("Expected Previous to point to prior AuthContext, got %v", ctx.SharedContext.AuthContext.Previous)
+}
+
+func TestBugHunt_ExtractQueryParam_DoubleDecoding(t *testing.T) {
+	// "a%2526b" should decode once to "a%26b".
+	// Current implementation decodes twice and returns "a&b".
+	got := extractQueryParam("/orders?token=a%2526b", "token")
+	if got != "a%26b" {
+		t.Fatalf("BUG: query parameter appears double-decoded: got %q, want %q", got, "a%26b")
+	}
+}
+
+func TestBugHunt_OnRequest_NilContextShouldNotPanic(t *testing.T) {
+	p := &APIKeyPolicy{}
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("BUG: OnRequest panicked for nil context: %v", r)
+		}
+	}()
+
+	action := p.OnRequest(nil, map[string]interface{}{
+		"key": "x-api-key",
+		"in":  "header",
+	})
+	if _, ok := action.(policy.ImmediateResponse); !ok {
+		t.Fatalf("expected fail-closed immediate response for nil context, got %T", action)
+	}
+}
+
+func TestBugHunt_UnsupportedLocationShouldReturnConfigError(t *testing.T) {
+	resetAPIKeyStore(t)
+	p := &APIKeyPolicy{}
+	ctx := newRequestContext(t, "GET", "/orders", map[string][]string{
+		"x-api-key": {"header-secret"},
+	}, "api-1", "OrdersAPI", "v1", "/orders")
+
+	action := p.OnRequest(ctx, map[string]interface{}{
+		"key": "x-api-key",
+		"in":  "cookie",
+	})
+	resp, ok := action.(policy.ImmediateResponse)
+	if !ok {
+		t.Fatalf("expected immediate response, got %T", action)
+	}
+	if resp.StatusCode != 500 {
+		t.Fatalf("BUG: unsupported 'in' value treated as auth failure (401) instead of config error, status=%d", resp.StatusCode)
 	}
 }
