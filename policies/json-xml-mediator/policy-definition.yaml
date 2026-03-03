@@ -1,4 +1,4 @@
-name: json-xml-mediation
+name: json-xml-mediator
 version: v0.1.0
 description: |
   Converts request payloads between JSON and XML
@@ -6,9 +6,9 @@ description: |
 parameters:
   type: object
   additionalProperties: false
-  required: ["upstreamFormat"]
+  required: ["upstreamPayloadFormat"]
   properties:
-    upstreamFormat:
+    upstreamPayloadFormat:
       type: string
       x-wso2-policy-advanced-param: false
       description: Defines the payload format the upstream service expects. Requests are converted to this format on the way in, and responses are converted back automatically.

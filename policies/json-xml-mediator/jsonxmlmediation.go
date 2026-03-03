@@ -29,26 +29,26 @@ import (
 )
 
 const (
-	upstreamFormatXML  = "xml"
-	upstreamFormatJSON = "json"
+	upstreamPayloadFormatXML  = "xml"
+	upstreamPayloadFormatJSON = "json"
 )
 
 // JSONXMLMediationPolicy mediates request/response payloads between JSON and XML.
 type JSONXMLMediationPolicy struct {
-	upstreamFormat string
+	upstreamPayloadFormat string
 }
 
 func GetPolicy(
 	metadata policy.PolicyMetadata,
 	params map[string]interface{},
 ) (policy.Policy, error) {
-	upstreamFormat, err := getUpstreamFormat(params)
+	upstreamPayloadFormat, err := getUpstreamPayloadFormat(params)
 	if err != nil {
 		return nil, err
 	}
 
 	return &JSONXMLMediationPolicy{
-		upstreamFormat: upstreamFormat,
+		upstreamPayloadFormat: upstreamPayloadFormat,
 	}, nil
 }
 
@@ -62,7 +62,7 @@ func (p *JSONXMLMediationPolicy) Mode() policy.ProcessingMode {
 	}
 }
 
-// OnRequest applies conversion to match the configured upstream format.
+// OnRequest applies conversion to match the configured upstream payload format.
 func (p *JSONXMLMediationPolicy) OnRequest(ctx *policy.RequestContext, _ map[string]interface{}) policy.RequestAction {
 	if ctx.Body == nil || !ctx.Body.Present || len(ctx.Body.Content) == 0 {
 		return policy.UpstreamRequestModifications{}
@@ -70,10 +70,10 @@ func (p *JSONXMLMediationPolicy) OnRequest(ctx *policy.RequestContext, _ map[str
 
 	contentType := getFirstHeader(ctx.Headers, "content-type")
 
-	switch p.upstreamFormat {
-	case upstreamFormatXML:
+	switch p.upstreamPayloadFormat {
+	case upstreamPayloadFormatXML:
 		if !strings.Contains(contentType, "application/json") {
-			return p.handleInternalServerError("Content-Type must be application/json when upstreamFormat is xml")
+			return p.handleInternalServerError("Content-Type must be application/json when upstreamPayloadFormat is xml")
 		}
 
 		xmlData, convErr := p.convertJSONBytesToXML(ctx.Body.Content)
@@ -88,9 +88,9 @@ func (p *JSONXMLMediationPolicy) OnRequest(ctx *policy.RequestContext, _ map[str
 				"content-length": fmt.Sprintf("%d", len(xmlData)),
 			},
 		}
-	case upstreamFormatJSON:
+	case upstreamPayloadFormatJSON:
 		if !strings.Contains(contentType, "application/xml") && !strings.Contains(contentType, "text/xml") {
-			return p.handleInternalServerError("Content-Type must be application/xml or text/xml when upstreamFormat is json")
+			return p.handleInternalServerError("Content-Type must be application/xml or text/xml when upstreamPayloadFormat is json")
 		}
 
 		jsonData, convErr := p.convertXMLToJSON(ctx.Body.Content)
@@ -106,7 +106,7 @@ func (p *JSONXMLMediationPolicy) OnRequest(ctx *policy.RequestContext, _ map[str
 			},
 		}
 	default:
-		return p.handleInternalServerError("Unsupported upstreamFormat value")
+		return p.handleInternalServerError("Unsupported upstreamPayloadFormat value")
 	}
 }
 
@@ -119,11 +119,11 @@ func (p *JSONXMLMediationPolicy) OnResponse(ctx *policy.ResponseContext, _ map[s
 	contentType := getFirstHeader(ctx.ResponseHeaders, "content-type")
 
 	// Apply reverse conversion in response flow.
-	switch p.upstreamFormat {
-	case upstreamFormatXML:
+	switch p.upstreamPayloadFormat {
+	case upstreamPayloadFormatXML:
 		// Upstream expects XML, so response from upstream must be XML->JSON.
 		if !strings.Contains(contentType, "application/xml") && !strings.Contains(contentType, "text/xml") {
-			return p.handleInternalServerErrorResponse("Content-Type must be application/xml or text/xml in response when upstreamFormat is xml")
+			return p.handleInternalServerErrorResponse("Content-Type must be application/xml or text/xml in response when upstreamPayloadFormat is xml")
 		}
 
 		jsonData, convErr := p.convertXMLToJSON(ctx.ResponseBody.Content)
@@ -138,10 +138,10 @@ func (p *JSONXMLMediationPolicy) OnResponse(ctx *policy.ResponseContext, _ map[s
 				"content-length": fmt.Sprintf("%d", len(jsonData)),
 			},
 		}
-	case upstreamFormatJSON:
+	case upstreamPayloadFormatJSON:
 		// Upstream expects JSON, so response from upstream must be JSON->XML.
 		if !strings.Contains(contentType, "application/json") {
-			return p.handleInternalServerErrorResponse("Content-Type must be application/json in response when upstreamFormat is json")
+			return p.handleInternalServerErrorResponse("Content-Type must be application/json in response when upstreamPayloadFormat is json")
 		}
 
 		xmlData, convErr := p.convertJSONBytesToXML(ctx.ResponseBody.Content)
@@ -157,24 +157,24 @@ func (p *JSONXMLMediationPolicy) OnResponse(ctx *policy.ResponseContext, _ map[s
 			},
 		}
 	default:
-		return p.handleInternalServerErrorResponse("Unsupported upstreamFormat value")
+		return p.handleInternalServerErrorResponse("Unsupported upstreamPayloadFormat value")
 	}
 }
 
-func getUpstreamFormat(params map[string]interface{}) (string, error) {
-	upstreamFormatRaw, ok := params["upstreamFormat"]
+func getUpstreamPayloadFormat(params map[string]interface{}) (string, error) {
+	upstreamPayloadFormatRaw, ok := params["upstreamPayloadFormat"]
 	if !ok {
-		return "", fmt.Errorf("Invalid policy configuration: upstreamFormat must be a non-empty string")
+		return "", fmt.Errorf("Invalid policy configuration: upstreamPayloadFormat must be a non-empty string")
 	}
 
-	upstreamFormat, ok := upstreamFormatRaw.(string)
-	if !ok || strings.TrimSpace(upstreamFormat) == "" {
-		return "", fmt.Errorf("Invalid policy configuration: upstreamFormat must be a non-empty string")
+	upstreamPayloadFormat, ok := upstreamPayloadFormatRaw.(string)
+	if !ok || strings.TrimSpace(upstreamPayloadFormat) == "" {
+		return "", fmt.Errorf("Invalid policy configuration: upstreamPayloadFormat must be a non-empty string")
 	}
 
-	normalized := strings.ToLower(strings.TrimSpace(upstreamFormat))
-	if normalized != upstreamFormatXML && normalized != upstreamFormatJSON {
-		return "", fmt.Errorf("Invalid policy configuration: upstreamFormat must be one of [xml, json]")
+	normalized := strings.ToLower(strings.TrimSpace(upstreamPayloadFormat))
+	if normalized != upstreamPayloadFormatXML && normalized != upstreamPayloadFormatJSON {
+		return "", fmt.Errorf("Invalid policy configuration: upstreamPayloadFormat must be one of [xml, json]")
 	}
 
 	return normalized, nil

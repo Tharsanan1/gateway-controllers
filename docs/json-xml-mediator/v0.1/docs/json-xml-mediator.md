@@ -1,11 +1,11 @@
 ---
 title: "Overview"
 ---
-# JSON XML Mediation
+# JSON XML Mediator
 
 ## Overview
 
-The JSON XML Mediation policy converts request payloads in one direction and automatically applies the reverse conversion in the response flow.
+The JSON XML Mediator policy converts request payloads in one direction and automatically applies the reverse conversion in the response flow.
 
 Use this when backend and client payload formats differ, and you want one policy to keep request and response formats symmetric.
 
@@ -14,8 +14,8 @@ Use this when backend and client payload formats differ, and you want one policy
 - Converts request payloads based on one parameter
 - Automatically applies the inverse conversion on responses
 - Supports both directions:
-  - `upstreamFormat: xml` converts request `JSON -> XML` and response `XML -> JSON`
-  - `upstreamFormat: json` converts request `XML -> JSON` and response `JSON -> XML`
+  - `upstreamPayloadFormat: xml` converts request `JSON -> XML` and response `XML -> JSON`
+  - `upstreamPayloadFormat: json` converts request `XML -> JSON` and response `JSON -> XML`
 - Updates `content-type` and `content-length` after transformation
 - Returns `500` with JSON error payload when conversion fails
 
@@ -25,15 +25,15 @@ Use this when backend and client payload formats differ, and you want one policy
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `upstreamFormat` | string | Yes | - | Specifies the payload format expected by upstream. Supported values: `xml`, `json`. Response conversion is applied in reverse automatically. |
+| `upstreamPayloadFormat` | string | Yes | - | Specifies the payload format expected by upstream. Supported values: `xml`, `json`. Response conversion is applied in reverse automatically. |
 
 **Note:**
 
 Inside the `gateway/build.yaml`, ensure the policy module is added under `policies:`:
 
 ```yaml
-- name: json-xml-mediation
-  gomodule: github.com/wso2/gateway-controllers/policies/json-xml-mediation@v0
+- name: json-xml-mediator
+  gomodule: github.com/wso2/gateway-controllers/policies/json-xml-mediator@v0
 ```
 
 ## Reference Scenarios
@@ -53,10 +53,10 @@ spec:
     main:
       url: http://legacy-xml-backend:8080
   policies:
-    - name: json-xml-mediation
+    - name: json-xml-mediator
       version: v0
       params:
-        upstreamFormat: xml
+        upstreamPayloadFormat: xml
 ```
 
 ### Example 2: Request XML to JSON, Response JSON to XML
@@ -74,10 +74,10 @@ spec:
     main:
       url: http://json-backend:8080
   policies:
-    - name: json-xml-mediation
+    - name: json-xml-mediator
       version: v0
       params:
-        upstreamFormat: json
+        upstreamPayloadFormat: json
 ```
 
 ## Notes

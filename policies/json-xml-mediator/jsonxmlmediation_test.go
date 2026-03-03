@@ -23,10 +23,10 @@ func parseErrorJSON(t *testing.T, body []byte) map[string]interface{} {
 	return out
 }
 
-func newConfiguredPolicy(t *testing.T, upstreamFormat string) *JSONXMLMediationPolicy {
+func newConfiguredPolicy(t *testing.T, upstreamPayloadFormat string) *JSONXMLMediationPolicy {
 	t.Helper()
 
-	p, err := GetPolicy(policy.PolicyMetadata{}, map[string]interface{}{"upstreamFormat": upstreamFormat})
+	p, err := GetPolicy(policy.PolicyMetadata{}, map[string]interface{}{"upstreamPayloadFormat": upstreamPayloadFormat})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -41,13 +41,13 @@ func newConfiguredPolicy(t *testing.T, upstreamFormat string) *JSONXMLMediationP
 
 func TestGetPolicy(t *testing.T) {
 	p := newConfiguredPolicy(t, " XML ")
-	if p.upstreamFormat != upstreamFormatXML {
-		t.Fatalf("expected normalized upstream format %q, got %q", upstreamFormatXML, p.upstreamFormat)
+	if p.upstreamPayloadFormat != upstreamPayloadFormatXML {
+		t.Fatalf("expected normalized upstream format %q, got %q", upstreamPayloadFormatXML, p.upstreamPayloadFormat)
 	}
 
 	p2 := newConfiguredPolicy(t, "json")
-	if p2.upstreamFormat != upstreamFormatJSON {
-		t.Fatalf("expected upstream format %q, got %q", upstreamFormatJSON, p2.upstreamFormat)
+	if p2.upstreamPayloadFormat != upstreamPayloadFormatJSON {
+		t.Fatalf("expected upstream format %q, got %q", upstreamPayloadFormatJSON, p2.upstreamPayloadFormat)
 	}
 
 	if p == p2 {
@@ -64,27 +64,27 @@ func TestGetPolicy_InvalidUpstreamFormatConfig(t *testing.T) {
 		{
 			name:      "nil params",
 			params:    nil,
-			expectMsg: "upstreamFormat must be a non-empty string",
+			expectMsg: "upstreamPayloadFormat must be a non-empty string",
 		},
 		{
-			name:      "missing upstreamFormat",
+			name:      "missing upstreamPayloadFormat",
 			params:    map[string]interface{}{},
-			expectMsg: "upstreamFormat must be a non-empty string",
+			expectMsg: "upstreamPayloadFormat must be a non-empty string",
 		},
 		{
-			name:      "empty upstreamFormat",
-			params:    map[string]interface{}{"upstreamFormat": ""},
-			expectMsg: "upstreamFormat must be a non-empty string",
+			name:      "empty upstreamPayloadFormat",
+			params:    map[string]interface{}{"upstreamPayloadFormat": ""},
+			expectMsg: "upstreamPayloadFormat must be a non-empty string",
 		},
 		{
 			name:      "invalid enum value",
-			params:    map[string]interface{}{"upstreamFormat": "yaml"},
-			expectMsg: "upstreamFormat must be one of [xml, json]",
+			params:    map[string]interface{}{"upstreamPayloadFormat": "yaml"},
+			expectMsg: "upstreamPayloadFormat must be one of [xml, json]",
 		},
 		{
 			name:      "invalid type",
-			params:    map[string]interface{}{"upstreamFormat": true},
-			expectMsg: "upstreamFormat must be a non-empty string",
+			params:    map[string]interface{}{"upstreamPayloadFormat": true},
+			expectMsg: "upstreamPayloadFormat must be a non-empty string",
 		},
 	}
 
