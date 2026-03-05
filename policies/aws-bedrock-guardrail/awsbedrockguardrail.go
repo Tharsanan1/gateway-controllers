@@ -38,11 +38,13 @@ import (
 )
 
 const (
-	GuardrailErrorCode      = 422
-	TextCleanRegex          = "^\"|\"$"
-	MetadataKeyPIIEntities  = "awsbedrockguardrail:pii_entities"
-	RequestDefaultJSONPath  = "$.messages[-1].content"
-	ResponseDefaultJSONPath = "$.choices[0].message.content"
+	GuardrailErrorCode           = 422
+	TextCleanRegex               = "^\"|\"$"
+	MetadataKeyPIIEntities       = "awsbedrockguardrail:pii_entities"
+	RequestDefaultJSONPath       = "$.messages[-1].content"
+	ResponseDefaultJSONPath      = "$.choices[0].message.content"
+	RequestFlowEnabledByDefault  = true
+	ResponseFlowEnabledByDefault = false
 )
 
 var textCleanRegexCompiled = regexp.MustCompile(TextCleanRegex)
@@ -76,6 +78,7 @@ type AWSBedrockGuardrailPolicy struct {
 }
 
 type AWSBedrockGuardrailPolicyParams struct {
+	Enabled            bool
 	JsonPath           string
 	RedactPII          bool
 	PassthroughOnError bool
@@ -170,9 +173,20 @@ func GetPolicy(
 func parseRequestResponseParams(params map[string]interface{}, isResponse bool) (AWSBedrockGuardrailPolicyParams, error) {
 	result := AWSBedrockGuardrailPolicyParams{
 		JsonPath: RequestDefaultJSONPath,
+		Enabled:  RequestFlowEnabledByDefault,
 	}
 	if isResponse {
 		result.JsonPath = ResponseDefaultJSONPath
+		result.Enabled = ResponseFlowEnabledByDefault
+	}
+
+	// Extract optional enabled parameter
+	if enabledRaw, ok := params["enabled"]; ok {
+		enabled, ok := enabledRaw.(bool)
+		if !ok {
+			return result, fmt.Errorf("'enabled' must be a boolean")
+		}
+		result.Enabled = enabled
 	}
 
 	// Extract optional jsonPath parameter
@@ -340,7 +354,7 @@ func (p *AWSBedrockGuardrailPolicy) Mode() policy.ProcessingMode {
 
 // OnRequest validates request body using AWS Bedrock Guardrail
 func (p *AWSBedrockGuardrailPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
-	if !p.hasRequestParams {
+	if !p.hasRequestParams || !p.requestParams.Enabled {
 		return policy.UpstreamRequestModifications{}
 	}
 
@@ -353,7 +367,7 @@ func (p *AWSBedrockGuardrailPolicy) OnRequest(ctx *policy.RequestContext, params
 
 // OnResponse validates response body using AWS Bedrock Guardrail
 func (p *AWSBedrockGuardrailPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
-	if !p.hasResponseParams {
+	if !p.hasResponseParams || !p.responseParams.Enabled {
 		return policy.UpstreamResponseModifications{}
 	}
 

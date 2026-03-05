@@ -30,11 +30,13 @@ import (
 )
 
 const (
-	GuardrailErrorCode      = 422
-	TextCleanRegex          = "^\"|\"$"
-	WordSplitRegex          = "\\s+"
-	DefaultJSONPath         = "$.messages[-1].content"
-	DefaultResponseJSONPath = "$.choices[0].message.content"
+	GuardrailErrorCode           = 422
+	TextCleanRegex               = "^\"|\"$"
+	WordSplitRegex               = "\\s+"
+	DefaultJSONPath              = "$.messages[-1].content"
+	DefaultResponseJSONPath      = "$.choices[0].message.content"
+	RequestFlowEnabledByDefault  = true
+	ResponseFlowEnabledByDefault = false
 )
 
 var (
@@ -51,6 +53,7 @@ type WordCountGuardrailPolicy struct {
 }
 
 type WordCountGuardrailPolicyParams struct {
+	Enabled        bool
 	Min            int
 	Max            int
 	JsonPath       string
@@ -116,9 +119,20 @@ func getFlowParams(params map[string]interface{}, flow string) (map[string]inter
 func parseParams(params map[string]interface{}, isResponse bool) (WordCountGuardrailPolicyParams, error) {
 	result := WordCountGuardrailPolicyParams{
 		JsonPath: DefaultJSONPath,
+		Enabled:  RequestFlowEnabledByDefault,
 	}
 	if isResponse {
 		result.JsonPath = DefaultResponseJSONPath
+		result.Enabled = ResponseFlowEnabledByDefault
+	}
+
+	// Extract optional enabled parameter
+	if enabledRaw, ok := params["enabled"]; ok {
+		enabled, ok := enabledRaw.(bool)
+		if !ok {
+			return result, fmt.Errorf("'enabled' must be a boolean")
+		}
+		result.Enabled = enabled
 	}
 
 	// Validate and extract min parameter (required)
@@ -220,7 +234,7 @@ func (p *WordCountGuardrailPolicy) Mode() policy.ProcessingMode {
 
 // OnRequest validates request body word count
 func (p *WordCountGuardrailPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
-	if !p.hasRequestParams {
+	if !p.hasRequestParams || !p.requestParams.Enabled {
 		return policy.UpstreamRequestModifications{}
 	}
 
@@ -233,7 +247,7 @@ func (p *WordCountGuardrailPolicy) OnRequest(ctx *policy.RequestContext, params 
 
 // OnResponse validates response body word count
 func (p *WordCountGuardrailPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
-	if !p.hasResponseParams {
+	if !p.hasResponseParams || !p.responseParams.Enabled {
 		return policy.UpstreamResponseModifications{}
 	}
 

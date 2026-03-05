@@ -1,8 +1,7 @@
 name: prompt-decorator
 version: v0.8.0
 description: |
-  Applies configured prompt decorations to request payloads before upstream
-  processing.
+  Applies configured prompt decorations to request payloads before upstream processing.
 
 parameters:
   type: object
@@ -11,8 +10,7 @@ parameters:
       type: object
       x-wso2-policy-advanced-param: false
       description: |
-        Specifies prompt decoration configuration. Provide exactly one of
-        `text` or `messages`.
+        Specifies prompt decoration configuration. Provide exactly one of `text` or `messages`.
       additionalProperties: false
       properties:
         text:
@@ -54,7 +52,7 @@ parameters:
             - messages
     jsonPath:
       type: string
-      x-wso2-policy-advanced-param: true
+      x-wso2-policy-advanced-param: false
       description: |
         Specifies the JSONPath expression used to locate the prompt segment to
         decorate. If omitted, defaults to "$.messages[-1].content" for `text`

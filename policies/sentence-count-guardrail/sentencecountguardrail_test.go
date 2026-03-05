@@ -106,6 +106,12 @@ func TestParseParams(t *testing.T) {
 			errContains: "'jsonPath' must be a string",
 		},
 		{
+			name:        "invalid enabled type",
+			input:       map[string]interface{}{"min": 1, "max": 10, "enabled": "true"},
+			expectErr:   true,
+			errContains: "'enabled' must be a boolean",
+		},
+		{
 			name:        "invalid invert type",
 			input:       map[string]interface{}{"min": 1, "max": 10, "invert": "true"},
 			expectErr:   true,
@@ -124,6 +130,7 @@ func TestParseParams(t *testing.T) {
 				"max": 10,
 			},
 			expected: SentenceCountGuardrailPolicyParams{
+				Enabled:  RequestFlowEnabledByDefault,
 				Min:      1,
 				Max:      10,
 				JsonPath: DefaultJSONPath,
@@ -139,6 +146,7 @@ func TestParseParams(t *testing.T) {
 				"showAssessment": true,
 			},
 			expected: SentenceCountGuardrailPolicyParams{
+				Enabled:        RequestFlowEnabledByDefault,
 				Min:            2,
 				Max:            20,
 				JsonPath:       "",
@@ -175,6 +183,9 @@ func TestParseParams(t *testing.T) {
 	}
 	if responseDefaults.JsonPath != DefaultResponseJSONPath {
 		t.Fatalf("expected response default jsonPath %q, got %q", DefaultResponseJSONPath, responseDefaults.JsonPath)
+	}
+	if responseDefaults.Enabled != ResponseFlowEnabledByDefault {
+		t.Fatalf("expected response default enabled %v, got %v", ResponseFlowEnabledByDefault, responseDefaults.Enabled)
 	}
 }
 
@@ -239,6 +250,9 @@ func TestGetPolicy(t *testing.T) {
 				if p.requestParams.JsonPath != DefaultJSONPath {
 					t.Fatalf("expected default jsonPath %q, got %q", DefaultJSONPath, p.requestParams.JsonPath)
 				}
+				if !p.requestParams.Enabled {
+					t.Fatalf("expected request enabled by default")
+				}
 			},
 		},
 		{
@@ -255,6 +269,9 @@ func TestGetPolicy(t *testing.T) {
 				}
 				if p.responseParams.JsonPath != DefaultResponseJSONPath {
 					t.Fatalf("expected default response jsonPath %q, got %q", DefaultResponseJSONPath, p.responseParams.JsonPath)
+				}
+				if p.responseParams.Enabled {
+					t.Fatalf("expected response disabled by default")
 				}
 			},
 		},
@@ -468,7 +485,7 @@ func TestOnRequestAndOnResponse(t *testing.T) {
 
 	// Request validation with nil body should fail when min > 0.
 	p.hasRequestParams = true
-	p.requestParams = SentenceCountGuardrailPolicyParams{Min: 1, Max: 10, JsonPath: ""}
+	p.requestParams = SentenceCountGuardrailPolicyParams{Enabled: true, Min: 1, Max: 10, JsonPath: ""}
 	reqFail := p.OnRequest(&policy.RequestContext{Body: nil}, nil)
 	if _, ok := reqFail.(policy.ImmediateResponse); !ok {
 		t.Fatalf("expected ImmediateResponse for request nil-body validation failure, got %T", reqFail)
@@ -476,7 +493,7 @@ func TestOnRequestAndOnResponse(t *testing.T) {
 
 	// Response validation with nil body should fail when min > 0.
 	p.hasResponseParams = true
-	p.responseParams = SentenceCountGuardrailPolicyParams{Min: 1, Max: 10, JsonPath: ""}
+	p.responseParams = SentenceCountGuardrailPolicyParams{Enabled: true, Min: 1, Max: 10, JsonPath: ""}
 	respFail := p.OnResponse(&policy.ResponseContext{ResponseBody: nil}, nil)
 	respMod, ok := respFail.(policy.UpstreamResponseModifications)
 	if !ok {
@@ -484,5 +501,17 @@ func TestOnRequestAndOnResponse(t *testing.T) {
 	}
 	if respMod.StatusCode == nil || *respMod.StatusCode != GuardrailErrorCode {
 		t.Fatalf("expected status code %d, got %#v", GuardrailErrorCode, respMod.StatusCode)
+	}
+
+	p.requestParams.Enabled = false
+	reqDisabled := p.OnRequest(&policy.RequestContext{Body: &policy.Body{Content: []byte(`{"messages":[{"content":"Hi."}]}`)}}, nil)
+	if _, ok := reqDisabled.(policy.UpstreamRequestModifications); !ok {
+		t.Fatalf("expected request no-op when request.enabled=false, got %T", reqDisabled)
+	}
+
+	p.responseParams.Enabled = false
+	respDisabled := p.OnResponse(&policy.ResponseContext{ResponseBody: &policy.Body{Content: []byte(`{"choices":[{"message":{"content":"Hi."}}]}`)}}, nil)
+	if _, ok := respDisabled.(policy.UpstreamResponseModifications); !ok {
+		t.Fatalf("expected response no-op when response.enabled=false, got %T", respDisabled)
 	}
 }

@@ -34,12 +34,14 @@ import (
 )
 
 const (
-	GuardrailErrorCode = 422
-	TextCleanRegex     = "^\"|\"$"
-	URLRegex           = "https?://[^\\s,\"'{}\\[\\]\\\\`*]+"
-	DefaultTimeout     = 3000 // milliseconds
-	DefaultRequestJSONPath  = "$.messages[-1].content"
-	DefaultResponseJSONPath = "$.choices[0].message.content"
+	GuardrailErrorCode           = 422
+	TextCleanRegex               = "^\"|\"$"
+	URLRegex                     = "https?://[^\\s,\"'{}\\[\\]\\\\`*]+"
+	DefaultTimeout               = 3000 // milliseconds
+	DefaultRequestJSONPath       = "$.messages[-1].content"
+	DefaultResponseJSONPath      = "$.choices[0].message.content"
+	RequestFlowEnabledByDefault  = false
+	ResponseFlowEnabledByDefault = true
 )
 
 var (
@@ -56,6 +58,7 @@ type URLGuardrailPolicy struct {
 }
 
 type URLGuardrailPolicyParams struct {
+	Enabled        bool
 	JsonPath       string
 	OnlyDNS        bool
 	Timeout        int
@@ -73,7 +76,7 @@ func GetPolicy(
 		return nil, err
 	}
 	if hasRequest {
-		requestParams, err := parseParams(requestParamsRaw, DefaultRequestJSONPath)
+		requestParams, err := parseParams(requestParamsRaw, DefaultRequestJSONPath, RequestFlowEnabledByDefault)
 		if err != nil {
 			return nil, fmt.Errorf("invalid request parameters: %w", err)
 		}
@@ -86,7 +89,7 @@ func GetPolicy(
 		return nil, err
 	}
 	if hasResponse {
-		responseParams, err := parseParams(responseParamsRaw, DefaultResponseJSONPath)
+		responseParams, err := parseParams(responseParamsRaw, DefaultResponseJSONPath, ResponseFlowEnabledByDefault)
 		if err != nil {
 			return nil, fmt.Errorf("invalid response parameters: %w", err)
 		}
@@ -117,9 +120,19 @@ func getFlowParams(params map[string]interface{}, flow string) (map[string]inter
 }
 
 // parseParams parses and validates parameters from map to struct
-func parseParams(params map[string]interface{}, defaultJSONPath string) (URLGuardrailPolicyParams, error) {
+func parseParams(params map[string]interface{}, defaultJSONPath string, defaultEnabled bool) (URLGuardrailPolicyParams, error) {
 	result := URLGuardrailPolicyParams{
 		JsonPath: defaultJSONPath,
+		Enabled:  defaultEnabled,
+	}
+
+	// Extract optional enabled parameter
+	if enabledRaw, ok := params["enabled"]; ok {
+		enabled, ok := enabledRaw.(bool)
+		if !ok {
+			return result, fmt.Errorf("'enabled' must be a boolean")
+		}
+		result.Enabled = enabled
 	}
 
 	// Extract optional jsonPath parameter
@@ -197,7 +210,7 @@ func (p *URLGuardrailPolicy) Mode() policy.ProcessingMode {
 
 // OnRequest validates URLs in request body
 func (p *URLGuardrailPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
-	if !p.hasRequestParams {
+	if !p.hasRequestParams || !p.requestParams.Enabled {
 		return policy.UpstreamRequestModifications{}
 	}
 
@@ -210,7 +223,7 @@ func (p *URLGuardrailPolicy) OnRequest(ctx *policy.RequestContext, params map[st
 
 // OnResponse validates URLs in response body
 func (p *URLGuardrailPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
-	if !p.hasResponseParams {
+	if !p.hasResponseParams || !p.responseParams.Enabled {
 		return policy.UpstreamResponseModifications{}
 	}
 

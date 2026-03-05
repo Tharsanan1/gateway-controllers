@@ -28,9 +28,11 @@ import (
 )
 
 const (
-	GuardrailErrorCode = 422
-	DefaultRequestJSONPath  = "$.messages[-1].content"
-	DefaultResponseJSONPath = "$.choices[0].message.content"
+	GuardrailErrorCode           = 422
+	DefaultRequestJSONPath       = "$.messages[-1].content"
+	DefaultResponseJSONPath      = "$.choices[0].message.content"
+	RequestFlowEnabledByDefault  = true
+	ResponseFlowEnabledByDefault = false
 )
 
 // RegexGuardrailPolicy implements regex-based content validation
@@ -42,6 +44,7 @@ type RegexGuardrailPolicy struct {
 }
 
 type RegexGuardrailPolicyParams struct {
+	Enabled        bool
 	Regex          string
 	JsonPath       string
 	Invert         bool
@@ -56,7 +59,7 @@ func GetPolicy(
 
 	// Extract and parse request parameters if present
 	if requestParamsRaw, ok := params["request"].(map[string]interface{}); ok {
-		requestParams, err := parseParams(requestParamsRaw, DefaultRequestJSONPath)
+		requestParams, err := parseParams(requestParamsRaw, DefaultRequestJSONPath, RequestFlowEnabledByDefault)
 		if err != nil {
 			return nil, fmt.Errorf("invalid request parameters: %w", err)
 		}
@@ -66,7 +69,7 @@ func GetPolicy(
 
 	// Extract and parse response parameters if present
 	if responseParamsRaw, ok := params["response"].(map[string]interface{}); ok {
-		responseParams, err := parseParams(responseParamsRaw, DefaultResponseJSONPath)
+		responseParams, err := parseParams(responseParamsRaw, DefaultResponseJSONPath, ResponseFlowEnabledByDefault)
 		if err != nil {
 			return nil, fmt.Errorf("invalid response parameters: %w", err)
 		}
@@ -85,11 +88,21 @@ func GetPolicy(
 }
 
 // parseParams parses and validates parameters from map to struct
-func parseParams(params map[string]interface{}, defaultJSONPath string) (RegexGuardrailPolicyParams, error) {
+func parseParams(params map[string]interface{}, defaultJSONPath string, defaultEnabled bool) (RegexGuardrailPolicyParams, error) {
 	result := RegexGuardrailPolicyParams{
+		Enabled:        defaultEnabled,
 		JsonPath:       defaultJSONPath,
 		Invert:         false,
 		ShowAssessment: false,
+	}
+
+	// Extract optional enabled parameter
+	if enabledRaw, ok := params["enabled"]; ok {
+		enabled, ok := enabledRaw.(bool)
+		if !ok {
+			return result, fmt.Errorf("'enabled' must be a boolean")
+		}
+		result.Enabled = enabled
 	}
 
 	// Validate and extract regex parameter (required)
@@ -154,7 +167,7 @@ func (p *RegexGuardrailPolicy) Mode() policy.ProcessingMode {
 
 // OnRequest validates request body against regex pattern
 func (p *RegexGuardrailPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
-	if !p.hasRequestParams {
+	if !p.hasRequestParams || !p.requestParams.Enabled {
 		return policy.UpstreamRequestModifications{}
 	}
 
@@ -167,7 +180,7 @@ func (p *RegexGuardrailPolicy) OnRequest(ctx *policy.RequestContext, params map[
 
 // OnResponse validates response body against regex pattern
 func (p *RegexGuardrailPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
-	if !p.hasResponseParams {
+	if !p.hasResponseParams || !p.responseParams.Enabled {
 		return policy.UpstreamResponseModifications{}
 	}
 

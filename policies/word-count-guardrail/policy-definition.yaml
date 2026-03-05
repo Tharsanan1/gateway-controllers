@@ -13,6 +13,11 @@ parameters:
       additionalProperties: false
       description: Configuration for request phase validation
       properties:
+        enabled:
+          type: boolean
+          x-wso2-policy-advanced-param: false
+          description: Enables validation for the request flow.
+          default: true
         min:
           type: integer
           x-wso2-policy-advanced-param: false
@@ -54,6 +59,11 @@ parameters:
       additionalProperties: false
       description: Configuration for response phase validation
       properties:
+        enabled:
+          type: boolean
+          x-wso2-policy-advanced-param: false
+          description: Enables validation for the response flow.
+          default: false
         min:
           type: integer
           x-wso2-policy-advanced-param: false

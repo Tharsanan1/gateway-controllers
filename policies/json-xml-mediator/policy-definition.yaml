@@ -8,6 +8,11 @@ parameters:
   additionalProperties: false
   required: ["upstreamPayloadFormat"]
   properties:
+    downsteamPayloadFormat:
+      type: string
+      x-wso2-policy-advanced-param: false
+      description: <Add proper description>
+      enum: ["xml", "json"]
     upstreamPayloadFormat:
       type: string
       x-wso2-policy-advanced-param: false

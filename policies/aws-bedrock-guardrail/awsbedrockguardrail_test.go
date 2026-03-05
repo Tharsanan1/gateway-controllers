@@ -97,6 +97,9 @@ func TestGetPolicy_RequestRedactForcesResponseRedact(t *testing.T) {
 	if !p.requestParams.RedactPII {
 		t.Fatalf("expected request redactPII to be true")
 	}
+	if !p.requestParams.Enabled {
+		t.Fatalf("expected request enabled by default")
+	}
 	if p.requestParams.JsonPath != RequestDefaultJSONPath {
 		t.Fatalf("expected request jsonPath default %q, got %q", RequestDefaultJSONPath, p.requestParams.JsonPath)
 	}
@@ -105,6 +108,9 @@ func TestGetPolicy_RequestRedactForcesResponseRedact(t *testing.T) {
 	}
 	if p.responseParams.JsonPath != ResponseDefaultJSONPath {
 		t.Fatalf("expected response jsonPath default %q, got %q", ResponseDefaultJSONPath, p.responseParams.JsonPath)
+	}
+	if p.responseParams.Enabled {
+		t.Fatalf("expected response disabled by default")
 	}
 }
 
@@ -145,6 +151,11 @@ func TestParseRequestResponseParams_TypeValidation(t *testing.T) {
 	_, err = parseRequestResponseParams(map[string]interface{}{"passthroughOnError": "true"}, false)
 	if err == nil || !strings.Contains(err.Error(), "'passthroughOnError' must be a boolean") {
 		t.Fatalf("expected passthroughOnError type error, got: %v", err)
+	}
+
+	_, err = parseRequestResponseParams(map[string]interface{}{"enabled": "true"}, false)
+	if err == nil || !strings.Contains(err.Error(), "'enabled' must be a boolean") {
+		t.Fatalf("expected enabled type error, got: %v", err)
 	}
 
 	_, err = parseRequestResponseParams(map[string]interface{}{"showAssessment": "true"}, false)
@@ -379,6 +390,29 @@ func TestOnRequest_NoRequestParams_ReturnsNoOp(t *testing.T) {
 	}
 }
 
+func TestOnRequest_DisabledRequestFlow_ReturnsNoOp(t *testing.T) {
+	p := &AWSBedrockGuardrailPolicy{
+		hasRequestParams: true,
+		requestParams: AWSBedrockGuardrailPolicyParams{
+			Enabled: false,
+		},
+	}
+
+	ctx := &policy.RequestContext{
+		SharedContext: &policy.SharedContext{
+			Metadata: map[string]interface{}{},
+		},
+		Body: &policy.Body{
+			Content: []byte(`{"msg":"hello"}`),
+		},
+	}
+
+	result := p.OnRequest(ctx, map[string]interface{}{})
+	if _, ok := result.(policy.UpstreamRequestModifications); !ok {
+		t.Fatalf("expected UpstreamRequestModifications, got %T", result)
+	}
+}
+
 func TestOnRequest_BlockAndPassthroughOnJSONPathError(t *testing.T) {
 	ctx := &policy.RequestContext{
 		SharedContext: &policy.SharedContext{
@@ -392,6 +426,7 @@ func TestOnRequest_BlockAndPassthroughOnJSONPathError(t *testing.T) {
 	blockPolicy := &AWSBedrockGuardrailPolicy{
 		hasRequestParams: true,
 		requestParams: AWSBedrockGuardrailPolicyParams{
+			Enabled:            true,
 			JsonPath:           "$.msg",
 			PassthroughOnError: false,
 		},
@@ -408,6 +443,7 @@ func TestOnRequest_BlockAndPassthroughOnJSONPathError(t *testing.T) {
 	passthroughPolicy := &AWSBedrockGuardrailPolicy{
 		hasRequestParams: true,
 		requestParams: AWSBedrockGuardrailPolicyParams{
+			Enabled:            true,
 			JsonPath:           "$.msg",
 			PassthroughOnError: true,
 		},
@@ -442,10 +478,34 @@ func TestOnResponse_NoResponseParams_ReturnsNoOp(t *testing.T) {
 	}
 }
 
+func TestOnResponse_DisabledResponseFlow_ReturnsNoOp(t *testing.T) {
+	p := &AWSBedrockGuardrailPolicy{
+		hasResponseParams: true,
+		responseParams: AWSBedrockGuardrailPolicyParams{
+			Enabled: false,
+		},
+	}
+
+	ctx := &policy.ResponseContext{
+		SharedContext: &policy.SharedContext{
+			Metadata: map[string]interface{}{},
+		},
+		ResponseBody: &policy.Body{
+			Content: []byte(`{"msg":"hello"}`),
+		},
+	}
+
+	result := p.OnResponse(ctx, map[string]interface{}{})
+	if _, ok := result.(policy.UpstreamResponseModifications); !ok {
+		t.Fatalf("expected UpstreamResponseModifications, got %T", result)
+	}
+}
+
 func TestOnResponse_RestoreAndBlockPaths(t *testing.T) {
 	restorePolicy := &AWSBedrockGuardrailPolicy{
 		hasResponseParams: true,
 		responseParams: AWSBedrockGuardrailPolicyParams{
+			Enabled:   true,
 			RedactPII: false,
 		},
 	}
@@ -475,6 +535,7 @@ func TestOnResponse_RestoreAndBlockPaths(t *testing.T) {
 	blockPolicy := &AWSBedrockGuardrailPolicy{
 		hasResponseParams: true,
 		responseParams: AWSBedrockGuardrailPolicyParams{
+			Enabled:            true,
 			JsonPath:           "$.msg",
 			PassthroughOnError: false,
 		},
@@ -513,6 +574,7 @@ func TestOnRequest_WithMockedBedrockNoViolation(t *testing.T) {
 		guardrailVersion: "DRAFT",
 		hasRequestParams: true,
 		requestParams: AWSBedrockGuardrailPolicyParams{
+			Enabled:  true,
 			JsonPath: "$.msg",
 		},
 		loadAWSConfigFunc: func(_ context.Context, _ string) (aws.Config, error) {
@@ -562,7 +624,9 @@ func TestOnRequest_WithMockedBedrockViolation(t *testing.T) {
 		guardrailID:      "gr-123",
 		guardrailVersion: "DRAFT",
 		hasRequestParams: true,
-		requestParams:    AWSBedrockGuardrailPolicyParams{},
+		requestParams: AWSBedrockGuardrailPolicyParams{
+			Enabled: true,
+		},
 		loadAWSConfigFunc: func(_ context.Context, _ string) (aws.Config, error) {
 			return aws.Config{}, nil
 		},
@@ -601,6 +665,7 @@ func TestOnRequest_WithMockedBedrockErrorPassthrough(t *testing.T) {
 		guardrailVersion: "DRAFT",
 		hasRequestParams: true,
 		requestParams: AWSBedrockGuardrailPolicyParams{
+			Enabled:            true,
 			PassthroughOnError: true,
 		},
 		loadAWSConfigFunc: func(_ context.Context, _ string) (aws.Config, error) {
@@ -637,6 +702,7 @@ func TestOnResponse_WithMockedBedrockPIIRedaction(t *testing.T) {
 		guardrailVersion:  "DRAFT",
 		hasResponseParams: true,
 		responseParams: AWSBedrockGuardrailPolicyParams{
+			Enabled:   true,
 			JsonPath:  "$.msg",
 			RedactPII: true,
 		},

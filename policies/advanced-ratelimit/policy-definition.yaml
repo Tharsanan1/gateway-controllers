@@ -54,8 +54,10 @@ parameters:
                   type: string
                   x-wso2-policy-advanced-param: false
                   description: |
-                    Specifies the limit window as a Go duration string, such as "1s", "1m",
-                    "1h", "24h", or "1h30m".
+                    Specifies the limit window as a Go duration string.
+                    Supports units ns, us, µs, ms, s, m, h, including
+                    composite and fractional values (for example "500ms",
+                    "1.5s", "1m30s", "24h").
                   pattern: "^[-+]?(([0-9]+(\\.[0-9]*)?|\\.[0-9]+)(ns|us|µs|ms|s|m|h))+$"
                 burst:
                   type: integer
@@ -319,19 +321,28 @@ systemParameters:
 
         connectionTimeout:
           type: string
-          description: Specifies the Redis connection timeout as a Go duration string.
+          description: Specifies the Redis connection timeout as a Go duration
+            string. Supports units ns, us, µs, ms, s, m, h, including
+            composite and fractional values (for example "500ms", "1.5s",
+            "1m30s").
           default: "5s"
           "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.connection_timeout}"
 
         readTimeout:
           type: string
-          description: Specifies the Redis read timeout as a Go duration string.
+          description: Specifies the Redis read timeout as a Go duration
+            string. Supports units ns, us, µs, ms, s, m, h, including
+            composite and fractional values (for example "500ms", "1.5s",
+            "1m30s").
           default: "3s"
           "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.read_timeout}"
 
         writeTimeout:
           type: string
-          description: Specifies the Redis write timeout as a Go duration string.
+          description: Specifies the Redis write timeout as a Go duration
+            string. Supports units ns, us, µs, ms, s, m, h, including
+            composite and fractional values (for example "500ms", "1.5s",
+            "1m30s").
           default: "3s"
           "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.write_timeout}"
 
@@ -353,6 +364,8 @@ systemParameters:
           type: string
           description: |
             Specifies how often expired in-memory entries are cleaned up.
+            Supports units ns, us, µs, ms, s, m, h, including composite and
+            fractional values (for example "500ms", "1.5s", "1m30s").
             Use "0" to disable cleanup.
           default: "5m"
           "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.memory.cleanup_interval}"

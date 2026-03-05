@@ -74,6 +74,12 @@ func TestParseParams(t *testing.T) {
 			errContains: "'jsonPath' must be a string",
 		},
 		{
+			name:        "enabled invalid type",
+			input:       map[string]interface{}{"schema": `{"type":"object"}`, "enabled": "true"},
+			expectErr:   true,
+			errContains: "'enabled' must be a boolean",
+		},
+		{
 			name:        "invert invalid type",
 			input:       map[string]interface{}{"schema": `{"type":"object"}`, "invert": "true"},
 			expectErr:   true,
@@ -94,6 +100,7 @@ func TestParseParams(t *testing.T) {
 				"showAssessment": true,
 			},
 			expected: JSONSchemaGuardrailPolicyParams{
+				Enabled:        RequestFlowEnabledByDefault,
 				Schema:         `{"type":"object","required":["name"]}`,
 				JsonPath:       "$.data",
 				Invert:         true,
@@ -104,7 +111,7 @@ func TestParseParams(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := parseParams(tc.input, DefaultRequestJSONPath)
+			got, err := parseParams(tc.input, DefaultRequestJSONPath, RequestFlowEnabledByDefault)
 			if tc.expectErr {
 				if err == nil {
 					t.Fatalf("expected error, got nil")
@@ -161,6 +168,9 @@ func TestGetPolicy(t *testing.T) {
 	if p.requestParams.JsonPath != DefaultRequestJSONPath {
 		t.Fatalf("unexpected request jsonPath default: got %q, want %q", p.requestParams.JsonPath, DefaultRequestJSONPath)
 	}
+	if p.requestParams.Enabled {
+		t.Fatalf("expected request disabled by default")
+	}
 
 	pRaw, err = GetPolicy(policy.PolicyMetadata{}, map[string]interface{}{
 		"request":  map[string]interface{}{"schema": `{"type":"object"}`},
@@ -179,8 +189,14 @@ func TestGetPolicy(t *testing.T) {
 	if p.requestParams.JsonPath != DefaultRequestJSONPath {
 		t.Fatalf("unexpected request jsonPath default: got %q, want %q", p.requestParams.JsonPath, DefaultRequestJSONPath)
 	}
+	if p.requestParams.Enabled {
+		t.Fatalf("expected request disabled by default")
+	}
 	if p.responseParams.JsonPath != DefaultResponseJSONPath {
 		t.Fatalf("unexpected response jsonPath default: got %q, want %q", p.responseParams.JsonPath, DefaultResponseJSONPath)
+	}
+	if !p.responseParams.Enabled {
+		t.Fatalf("expected response enabled by default")
 	}
 }
 
@@ -387,7 +403,8 @@ func TestOnRequestAndOnResponse(t *testing.T) {
 	// Request phase configured, nil body -> validation failure
 	p.hasRequestParams = true
 	p.requestParams = JSONSchemaGuardrailPolicyParams{
-		Schema: `{"type":"object","required":["name"]}`,
+		Enabled: true,
+		Schema:  `{"type":"object","required":["name"]}`,
 	}
 	reqResult = p.OnRequest(&policy.RequestContext{Body: nil}, nil)
 	if _, ok := reqResult.(policy.ImmediateResponse); !ok {
@@ -397,7 +414,8 @@ func TestOnRequestAndOnResponse(t *testing.T) {
 	// Response phase configured, nil body -> validation failure
 	p.hasResponseParams = true
 	p.responseParams = JSONSchemaGuardrailPolicyParams{
-		Schema: `{"type":"object","required":["name"]}`,
+		Enabled: true,
+		Schema:  `{"type":"object","required":["name"]}`,
 	}
 	respResult = p.OnResponse(&policy.ResponseContext{ResponseBody: nil}, nil)
 	respMod, ok := respResult.(policy.UpstreamResponseModifications)
@@ -406,5 +424,17 @@ func TestOnRequestAndOnResponse(t *testing.T) {
 	}
 	if respMod.StatusCode == nil || *respMod.StatusCode != GuardrailErrorCode {
 		t.Fatalf("expected status %d, got %#v", GuardrailErrorCode, respMod.StatusCode)
+	}
+
+	p.requestParams.Enabled = false
+	reqDisabled := p.OnRequest(&policy.RequestContext{Body: &policy.Body{Content: []byte(`{"name":"alice"}`)}}, nil)
+	if _, ok := reqDisabled.(policy.UpstreamRequestModifications); !ok {
+		t.Fatalf("expected request no-op when request.enabled=false, got %T", reqDisabled)
+	}
+
+	p.responseParams.Enabled = false
+	respDisabled := p.OnResponse(&policy.ResponseContext{ResponseBody: &policy.Body{Content: []byte(`{"name":"alice"}`)}}, nil)
+	if _, ok := respDisabled.(policy.UpstreamResponseModifications); !ok {
+		t.Fatalf("expected response no-op when response.enabled=false, got %T", respDisabled)
 	}
 }

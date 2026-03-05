@@ -1,7 +1,7 @@
 name: json-schema-guardrail
 version: v0.2.0
 description: |
-  Validate request or response content against a JSON Schema with optional JSONPath extraction and optional inverted validation logic.
+  Validate request or response content against a JSON Schema.
 
 parameters:
   type: object
@@ -10,15 +10,19 @@ parameters:
       type: object
       description: Configuration for request phase validation
       properties:
+        enabled:
+          type: boolean
+          x-wso2-policy-advanced-param: false
+          description: Enables validation for the request flow.
+          default: false
         schema:
           type: string
           description: Provide the JSON Schema as a valid JSON string for validating the extracted or full payload.
         jsonPath:
           type: string
+          x-wso2-policy-advanced-param: false
           description: |
             Extract JSON with JSONPath before schema validation.
-            Defaults to "$.messages[-1].content" (last message content).
-            Set to "" to validate the full payload against the schema.
           default: "$.messages[-1].content"
         invert:
           type: boolean
@@ -40,15 +44,19 @@ parameters:
       type: object
       description: Configuration for response phase validation
       properties:
+        enabled:
+          type: boolean
+          x-wso2-policy-advanced-param: false
+          description: Enables validation for the response flow.
+          default: true
         schema:
           type: string
           description: Provide the JSON Schema as a valid JSON string for validating the extracted or full payload.
         jsonPath:
           type: string
+          x-wso2-policy-advanced-param: false
           description: |
             Extract JSON with JSONPath before schema validation.
-            Defaults to "$.choices[0].message.content" (first choice message content).
-            Set to "" to validate the full payload against the schema.
           default: "$.choices[0].message.content"
         invert:
           type: boolean

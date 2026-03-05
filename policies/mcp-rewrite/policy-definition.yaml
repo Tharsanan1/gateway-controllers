@@ -122,6 +122,10 @@ parameters:
             description: Backend prompt name to use when forwarding requests.
             minLength: 1
             maxLength: 256
+  anyOf:
+    - required: [tools]
+    - required: [resources]
+    - required: [prompts]
 
 systemParameters:
   type: object

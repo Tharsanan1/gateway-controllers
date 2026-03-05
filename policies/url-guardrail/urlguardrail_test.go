@@ -75,6 +75,7 @@ func TestParseParams(t *testing.T) {
 			name:  "valid defaults",
 			input: map[string]interface{}{},
 			expected: URLGuardrailPolicyParams{
+				Enabled:  RequestFlowEnabledByDefault,
 				JsonPath: DefaultRequestJSONPath,
 				Timeout:  DefaultTimeout,
 			},
@@ -88,11 +89,18 @@ func TestParseParams(t *testing.T) {
 				"showAssessment": true,
 			},
 			expected: URLGuardrailPolicyParams{
+				Enabled:        RequestFlowEnabledByDefault,
 				JsonPath:       "$.data.text",
 				OnlyDNS:        true,
 				Timeout:        2500,
 				ShowAssessment: true,
 			},
+		},
+		{
+			name:        "invalid enabled type",
+			input:       map[string]interface{}{"enabled": "true"},
+			expectErr:   true,
+			errContains: "'enabled' must be a boolean",
 		},
 		{
 			name:        "invalid jsonPath type",
@@ -128,7 +136,7 @@ func TestParseParams(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := parseParams(tc.input, DefaultRequestJSONPath)
+			got, err := parseParams(tc.input, DefaultRequestJSONPath, RequestFlowEnabledByDefault)
 			if tc.expectErr {
 				if err == nil {
 					t.Fatalf("expected error, got nil")
@@ -209,6 +217,9 @@ func TestGetPolicy(t *testing.T) {
 				if p.requestParams.JsonPath != DefaultRequestJSONPath {
 					t.Fatalf("unexpected request jsonPath: %s", p.requestParams.JsonPath)
 				}
+				if p.requestParams.Enabled {
+					t.Fatalf("expected request disabled by default")
+				}
 			},
 		},
 		{
@@ -225,6 +236,9 @@ func TestGetPolicy(t *testing.T) {
 				}
 				if p.responseParams.JsonPath != DefaultResponseJSONPath {
 					t.Fatalf("unexpected response jsonPath: %s", p.responseParams.JsonPath)
+				}
+				if !p.responseParams.Enabled {
+					t.Fatalf("expected response enabled by default")
 				}
 			},
 		},
@@ -452,7 +466,7 @@ func TestOnRequestAndOnResponse(t *testing.T) {
 
 	// Request validation with nil body and explicit jsonPath should fail extraction.
 	p.hasRequestParams = true
-	p.requestParams = URLGuardrailPolicyParams{JsonPath: "$.text", Timeout: 100}
+	p.requestParams = URLGuardrailPolicyParams{Enabled: true, JsonPath: "$.text", Timeout: 100}
 	reqFail := p.OnRequest(&policy.RequestContext{Body: nil}, nil)
 	if _, ok := reqFail.(policy.ImmediateResponse); !ok {
 		t.Fatalf("expected ImmediateResponse for request nil-body extraction failure, got %T", reqFail)
@@ -460,7 +474,7 @@ func TestOnRequestAndOnResponse(t *testing.T) {
 
 	// Response validation with nil body and explicit jsonPath should fail extraction.
 	p.hasResponseParams = true
-	p.responseParams = URLGuardrailPolicyParams{JsonPath: "$.text", Timeout: 100}
+	p.responseParams = URLGuardrailPolicyParams{Enabled: true, JsonPath: "$.text", Timeout: 100}
 	respFail := p.OnResponse(&policy.ResponseContext{ResponseBody: nil}, nil)
 	respMod, ok := respFail.(policy.UpstreamResponseModifications)
 	if !ok {
@@ -468,5 +482,17 @@ func TestOnRequestAndOnResponse(t *testing.T) {
 	}
 	if respMod.StatusCode == nil || *respMod.StatusCode != GuardrailErrorCode {
 		t.Fatalf("expected status code %d, got %#v", GuardrailErrorCode, respMod.StatusCode)
+	}
+
+	p.requestParams.Enabled = false
+	reqDisabled := p.OnRequest(&policy.RequestContext{Body: &policy.Body{Content: []byte(`{"text":"https://example.com"}`)}}, nil)
+	if _, ok := reqDisabled.(policy.UpstreamRequestModifications); !ok {
+		t.Fatalf("expected request no-op when request.enabled=false, got %T", reqDisabled)
+	}
+
+	p.responseParams.Enabled = false
+	respDisabled := p.OnResponse(&policy.ResponseContext{ResponseBody: &policy.Body{Content: []byte(`{"text":"https://example.com"}`)}}, nil)
+	if _, ok := respDisabled.(policy.UpstreamResponseModifications); !ok {
+		t.Fatalf("expected response no-op when response.enabled=false, got %T", respDisabled)
 	}
 }
