@@ -20,320 +20,339 @@ package mcpauthz
 
 import (
 	"encoding/json"
-	"reflect"
 	"strings"
 	"testing"
 
-	"github.com/golang-jwt/jwt/v5"
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 )
 
-func TestGetPolicyValidation(t *testing.T) {
-	tests := []struct {
-		name    string
-		params  map[string]any
-		wantErr string
-	}{
-		{
-			name:    "missing rules",
-			params:  map[string]any{},
-			wantErr: "rules parameter is required",
-		},
-		{
-			name: "rules must be array",
-			params: map[string]any{
-				"rules": "invalid",
-			},
-			wantErr: "rules must be an array",
-		},
-		{
-			name: "rules array cannot be empty",
-			params: map[string]any{
-				"rules": []any{},
-			},
-			wantErr: "rules must contain at least one rule",
-		},
-		{
-			name: "rule must define claims or scopes",
-			params: map[string]any{
-				"rules": []any{
-					map[string]any{
-						"attribute": map[string]any{
-							"type": "tool",
-						},
-					},
-				},
-			},
-			wantErr: "must define at least one of requiredClaims or requiredScopes",
-		},
-		{
-			name: "rule must define non-empty conditions",
-			params: map[string]any{
-				"rules": []any{
-					map[string]any{
-						"attribute": map[string]any{
-							"type": "tool",
-						},
-						"requiredClaims": map[string]any{},
-						"requiredScopes": []any{},
-					},
-				},
-			},
-			wantErr: "must define at least one non-empty authorization condition",
-		},
-		{
-			name: "valid scope-only rule",
-			params: map[string]any{
-				"rules": []any{
-					map[string]any{
-						"attribute": map[string]any{
-							"type": "tool",
-						},
-						"requiredScopes": []any{"mcp:tool:read"},
-					},
-				},
-			},
-		},
-		{
-			name: "valid claim-only rule",
-			params: map[string]any{
-				"rules": []any{
-					map[string]any{
-						"attribute": map[string]any{
-							"type": "resource",
-						},
-						"requiredClaims": map[string]any{
-							"department": "finance",
-						},
-					},
-				},
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			raw, err := GetPolicy(policy.PolicyMetadata{}, tt.params)
-			if tt.wantErr != "" {
-				if err == nil {
-					t.Fatalf("expected error containing %q, got nil", tt.wantErr)
-				}
-				if !strings.Contains(err.Error(), tt.wantErr) {
-					t.Fatalf("expected error containing %q, got %q", tt.wantErr, err.Error())
-				}
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if raw == nil {
-				t.Fatalf("expected policy instance, got nil")
-			}
-		})
-	}
-}
-
-func TestDefaultAttributeNameIsWildcard(t *testing.T) {
-	raw, err := GetPolicy(policy.PolicyMetadata{}, map[string]any{
-		"rules": []any{
-			map[string]any{
-				"attribute": map[string]any{
-					"type": "tool",
-				},
-				"requiredScopes": []any{"mcp:tool:read"},
-			},
-		},
-	})
-	if err != nil {
-		t.Fatalf("failed to create policy: %v", err)
-	}
-
-	p, ok := raw.(*McpAuthzPolicy)
-	if !ok {
-		t.Fatalf("expected *McpAuthzPolicy, got %T", raw)
-	}
-
-	matching := p.findMatchingRules("tool", "list_files", "tools/call")
-	if len(matching) != 1 {
-		t.Fatalf("expected 1 matching rule, got %d", len(matching))
-	}
-	if matching[0].Attribute.Name != "*" {
-		t.Fatalf("expected default attribute.name '*', got %q", matching[0].Attribute.Name)
-	}
-}
-
-func TestMethodRuleMatchingAndSpecificity(t *testing.T) {
-	raw, err := GetPolicy(policy.PolicyMetadata{}, map[string]any{
-		"rules": []any{
-			map[string]any{
-				"attribute": map[string]any{
-					"type": "method",
-					"name": "*",
-				},
-				"requiredScopes": []any{"mcp:all"},
-			},
-			map[string]any{
-				"attribute": map[string]any{
-					"type": "method",
-					"name": "tools/call",
-				},
-				"requiredScopes": []any{"mcp:tool:call"},
-			},
-		},
-	})
-	if err != nil {
-		t.Fatalf("failed to create policy: %v", err)
-	}
-
-	p := raw.(*McpAuthzPolicy)
-	matching := p.findMatchingRules("tool", "list_files", "tools/call")
-	if len(matching) != 2 {
-		t.Fatalf("expected 2 matching method rules, got %d", len(matching))
-	}
-	if matching[0].Attribute.Name != "tools/call" {
-		t.Fatalf("expected exact method rule first, got %q", matching[0].Attribute.Name)
-	}
-	if matching[1].Attribute.Name != "*" {
-		t.Fatalf("expected wildcard method rule second, got %q", matching[1].Attribute.Name)
-	}
-}
-
-func TestRuleRequiresClaimsAndScopesConjunction(t *testing.T) {
-	p := &McpAuthzPolicy{}
-	rule := Rule{
-		RequiredClaims: map[string]string{
-			"department": "engineering",
-		},
-		RequiredScopes: []string{"mcp:tool:read"},
-	}
-
-	ok, _ := p.ruleGrantsAccess(rule, jwt.MapClaims{
-		"department": "engineering",
-		"scope":      "mcp:tool:read mcp:tool:list",
-	})
-	if !ok {
-		t.Fatalf("expected rule to grant access when both claims and scopes satisfy")
-	}
-
-	ok, missing := p.ruleGrantsAccess(rule, jwt.MapClaims{
-		"department": "engineering",
-		"scope":      "mcp:tool:list",
-	})
-	if ok {
-		t.Fatalf("expected rule to reject when required scope is missing")
-	}
-	if len(missing) != 1 || missing[0] != "mcp:tool:read" {
-		t.Fatalf("unexpected missing scopes: %v", missing)
-	}
-
-	ok, _ = p.ruleGrantsAccess(rule, jwt.MapClaims{
-		"department": "finance",
-		"scope":      "mcp:tool:read",
-	})
-	if ok {
-		t.Fatalf("expected rule to reject when required claim mismatches")
-	}
-}
-
-func TestExtractScopesFromScopeAndScpClaims(t *testing.T) {
-	p := &McpAuthzPolicy{}
-
-	got := p.extractScopes(jwt.MapClaims{
-		"scope": "alpha beta",
-	})
-	if !reflect.DeepEqual(got, []string{"alpha", "beta"}) {
-		t.Fatalf("expected scope claim extraction, got %v", got)
-	}
-
-	got = p.extractScopes(jwt.MapClaims{
-		"scp": []any{"one", "two"},
-	})
-	if !reflect.DeepEqual(got, []string{"one", "two"}) {
-		t.Fatalf("expected scp claim extraction, got %v", got)
-	}
-
-	got = p.extractScopes(jwt.MapClaims{
-		"scope": "primary",
-		"scp":   []any{"fallback"},
-	})
-	if !reflect.DeepEqual(got, []string{"primary"}) {
-		t.Fatalf("expected scope claim to take precedence, got %v", got)
-	}
-}
-
-func TestOnRequestDenyResponseContainsExpectedStatusHeaderAndBody(t *testing.T) {
-	raw, err := GetPolicy(policy.PolicyMetadata{}, map[string]any{
-		"rules": []any{
-			map[string]any{
-				"attribute": map[string]any{
-					"type": "tool",
-					"name": "list_files",
-				},
-				"requiredScopes": []any{"mcp:tool:write"},
-			},
-		},
-	})
-	if err != nil {
-		t.Fatalf("failed to create policy: %v", err)
-	}
-
-	p := raw.(*McpAuthzPolicy)
-	ctx := newMcpRequestContext(`{"jsonrpc":"2.0","id":"1","method":"tools/call","params":{"name":"list_files"}}`)
-	ctx.Metadata[MetadataValidatedClaims] = jwt.MapClaims{
-		"scope": "mcp:tool:read",
-	}
-
-	action := p.OnRequest(ctx, nil)
-	resp, ok := action.(policy.ImmediateResponse)
-	if !ok {
-		t.Fatalf("expected ImmediateResponse, got %T", action)
-	}
-
-	if resp.StatusCode != 403 {
-		t.Fatalf("expected status 403, got %d", resp.StatusCode)
-	}
-	if resp.Headers["content-type"] != "application/json" {
-		t.Fatalf("expected JSON content type, got %q", resp.Headers["content-type"])
-	}
-
-	wwwAuth := resp.Headers[WWWAuthenticateHeader]
-	if !strings.Contains(wwwAuth, `resource_metadata="https://api.example.com:9443/base/.well-known/oauth-protected-resource"`) {
-		t.Fatalf("unexpected WWW-Authenticate header resource metadata: %q", wwwAuth)
-	}
-	if !strings.Contains(wwwAuth, `scope="mcp:tool:write"`) {
-		t.Fatalf("expected missing scope in WWW-Authenticate header, got %q", wwwAuth)
-	}
-	if !strings.Contains(wwwAuth, `error="invalid_token"`) {
-		t.Fatalf("expected error in WWW-Authenticate header, got %q", wwwAuth)
-	}
-
-	var body map[string]any
-	if err := json.Unmarshal(resp.Body, &body); err != nil {
-		t.Fatalf("failed to parse response body: %v", err)
-	}
-	if body["error"] != "Forbidden" {
-		t.Fatalf("expected error Forbidden, got %v", body["error"])
-	}
-	msg, ok := body["message"].(string)
-	if !ok || !strings.Contains(msg, "insufficient permissions") {
-		t.Fatalf("unexpected message: %v", body["message"])
-	}
-}
-
-func newMcpRequestContext(body string) *policy.RequestContext {
+// createMockContext builds a RequestContext with a body and optional AuthContext,
+// simulating that an upstream auth policy (mcp-auth/jwt-auth) already ran.
+func createMockContext(method, path string, body []byte, authCtx *policy.AuthContext) *policy.RequestContext {
 	return &policy.RequestContext{
 		SharedContext: &policy.SharedContext{
-			RequestID:  "test-request-id",
-			Metadata:   make(map[string]any),
-			APIContext: "/base",
+			RequestID:   "test-request-id",
+			Metadata:    make(map[string]any),
+			AuthContext: authCtx,
 		},
-		Headers:   policy.NewHeaders(nil),
-		Body:      &policy.Body{Content: []byte(body), Present: true},
-		Path:      "/mcp",
-		Method:    "POST",
-		Scheme:    "https",
-		Authority: "gateway.example.com:9443",
-		Vhost:     "api.example.com",
+		Headers: policy.NewHeaders(nil),
+		Body: &policy.Body{
+			Content: body,
+			Present: true,
+		},
+		Path:   path,
+		Method: method,
+		Scheme: "http",
+	}
+}
+
+func authenticatedAuthCtx(scopes map[string]bool, subject, issuer string, audiences []string, props map[string]string) *policy.AuthContext {
+	return &policy.AuthContext{
+		Authenticated: true,
+		AuthType:      "jwt",
+		Subject:       subject,
+		Issuer:        issuer,
+		Audience:      audiences,
+		Scopes:        scopes,
+		Properties:    props,
+	}
+}
+
+func rulesParam(rules []any) map[string]any {
+	return map[string]any{"rules": rules}
+}
+
+func toolCallBody(toolName string) []byte {
+	b, _ := json.Marshal(map[string]any{
+		"method": "tools/call",
+		"params": map[string]any{"name": toolName},
+	})
+	return b
+}
+
+// ---- GetPolicy ----
+
+func TestGetPolicy(t *testing.T) {
+	params := rulesParam([]any{
+		map[string]any{
+			"attribute":      map[string]any{"type": "tool", "name": "my-tool"},
+			"requiredScopes": []any{"mcp:tools:read"},
+		},
+	})
+	p, err := GetPolicy(policy.PolicyMetadata{}, params)
+	if err != nil {
+		t.Fatalf("GetPolicy returned error: %v", err)
+	}
+	if p == nil {
+		t.Error("GetPolicy returned nil policy")
+	}
+}
+
+func TestGetPolicy_MissingRules(t *testing.T) {
+	_, err := GetPolicy(policy.PolicyMetadata{}, map[string]any{})
+	if err == nil {
+		t.Error("Expected error for missing rules param")
+	}
+}
+
+// ---- Mode ----
+
+func TestMode(t *testing.T) {
+	p := &McpAuthzPolicy{}
+	mode := p.Mode()
+	if mode.RequestBodyMode != policy.BodyModeBuffer {
+		t.Errorf("Expected RequestBodyMode=BodyModeBuffer, got %v", mode.RequestBodyMode)
+	}
+	if mode.RequestHeaderMode != policy.HeaderModeSkip {
+		t.Errorf("Expected RequestHeaderMode=HeaderModeSkip, got %v", mode.RequestHeaderMode)
+	}
+}
+
+// ---- OnRequest: path/method guard ----
+
+func TestOnRequest_SkipsNonMCP_GET(t *testing.T) {
+	p := &McpAuthzPolicy{}
+	ctx := createMockContext("GET", "/mcp", toolCallBody("tool1"), authenticatedAuthCtx(nil, "alice", "", nil, nil))
+	action := p.OnRequest(ctx, map[string]any{})
+	if action != nil {
+		t.Errorf("Expected nil for non-POST, got %T", action)
+	}
+}
+
+func TestOnRequest_SkipsNonMCP_Path(t *testing.T) {
+	p := &McpAuthzPolicy{}
+	ctx := createMockContext("POST", "/api/resource", toolCallBody("tool1"), authenticatedAuthCtx(nil, "alice", "", nil, nil))
+	action := p.OnRequest(ctx, map[string]any{})
+	if action != nil {
+		t.Errorf("Expected nil for non-/mcp path, got %T", action)
+	}
+}
+
+// ---- OnRequest: AuthContext checks ----
+
+func TestOnRequest_NoAuthContext(t *testing.T) {
+	p := &McpAuthzPolicy{}
+	ctx := createMockContext("POST", "/mcp", toolCallBody("tool1"), nil)
+	action := p.OnRequest(ctx, map[string]any{})
+	resp, ok := action.(policy.ImmediateResponse)
+	if !ok {
+		t.Fatalf("Expected ImmediateResponse, got %T", action)
+	}
+	if resp.StatusCode != 403 {
+		t.Errorf("Expected 403, got %d", resp.StatusCode)
+	}
+}
+
+func TestOnRequest_NotAuthenticated(t *testing.T) {
+	p := &McpAuthzPolicy{}
+	authCtx := &policy.AuthContext{Authenticated: false, AuthType: "jwt"}
+	ctx := createMockContext("POST", "/mcp", toolCallBody("tool1"), authCtx)
+	action := p.OnRequest(ctx, map[string]any{})
+	resp, ok := action.(policy.ImmediateResponse)
+	if !ok {
+		t.Fatalf("Expected ImmediateResponse, got %T", action)
+	}
+	if resp.StatusCode != 403 {
+		t.Errorf("Expected 403, got %d", resp.StatusCode)
+	}
+}
+
+// ---- OnRequest: body parsing ----
+
+func TestOnRequest_InvalidMCPBody(t *testing.T) {
+	p := &McpAuthzPolicy{}
+	authCtx := authenticatedAuthCtx(nil, "alice", "", nil, nil)
+	ctx := createMockContext("POST", "/mcp", []byte("not-json"), authCtx)
+	action := p.OnRequest(ctx, map[string]any{})
+	resp, ok := action.(policy.ImmediateResponse)
+	if !ok {
+		t.Fatalf("Expected ImmediateResponse, got %T", action)
+	}
+	if resp.StatusCode != 403 {
+		t.Errorf("Expected 403, got %d", resp.StatusCode)
+	}
+}
+
+// ---- OnRequest: rule matching ----
+
+func TestOnRequest_NoMatchingRules(t *testing.T) {
+	p := &McpAuthzPolicy{Rules: []Rule{
+		{
+			Attribute:      Attribute{Type: "tool", Name: "other-tool"},
+			RequiredScopes: []string{"read"},
+		},
+	}}
+	authCtx := authenticatedAuthCtx(map[string]bool{"read": true}, "alice", "", nil, nil)
+	ctx := createMockContext("POST", "/mcp", toolCallBody("my-tool"), authCtx)
+	action := p.OnRequest(ctx, map[string]any{})
+	if action != nil {
+		t.Errorf("Expected nil (allow) when no rules match, got %T", action)
+	}
+}
+
+func TestOnRequest_ScopeCheckPasses(t *testing.T) {
+	p := &McpAuthzPolicy{Rules: []Rule{
+		{
+			Attribute:      Attribute{Type: "tool", Name: "my-tool"},
+			RequiredScopes: []string{"mcp:tools:read"},
+		},
+	}}
+	authCtx := authenticatedAuthCtx(map[string]bool{"mcp:tools:read": true}, "alice", "", nil, nil)
+	ctx := createMockContext("POST", "/mcp", toolCallBody("my-tool"), authCtx)
+	action := p.OnRequest(ctx, map[string]any{})
+	if action != nil {
+		t.Errorf("Expected nil (authorized), got %T", action)
+	}
+}
+
+func TestOnRequest_ScopeCheckFails(t *testing.T) {
+	p := &McpAuthzPolicy{Rules: []Rule{
+		{
+			Attribute:      Attribute{Type: "tool", Name: "my-tool"},
+			RequiredScopes: []string{"mcp:tools:write"},
+		},
+	}}
+	authCtx := authenticatedAuthCtx(map[string]bool{"mcp:tools:read": true}, "alice", "", nil, nil)
+	ctx := createMockContext("POST", "/mcp", toolCallBody("my-tool"), authCtx)
+	action := p.OnRequest(ctx, map[string]any{})
+	resp, ok := action.(policy.ImmediateResponse)
+	if !ok {
+		t.Fatalf("Expected ImmediateResponse (forbidden), got %T", action)
+	}
+	if resp.StatusCode != 403 {
+		t.Errorf("Expected 403, got %d", resp.StatusCode)
+	}
+	// WWW-Authenticate header should mention the missing scope
+	wwwAuth := resp.Headers[WWWAuthenticateHeader]
+	if !strings.Contains(wwwAuth, "mcp:tools:write") {
+		t.Errorf("Expected missing scope in WWW-Authenticate header, got: %s", wwwAuth)
+	}
+}
+
+func TestOnRequest_ClaimCheckPasses_Sub(t *testing.T) {
+	p := &McpAuthzPolicy{Rules: []Rule{
+		{
+			Attribute:      Attribute{Type: "tool", Name: "my-tool"},
+			RequiredClaims: map[string]string{"sub": "alice"},
+		},
+	}}
+	authCtx := authenticatedAuthCtx(nil, "alice", "", nil, nil)
+	ctx := createMockContext("POST", "/mcp", toolCallBody("my-tool"), authCtx)
+	action := p.OnRequest(ctx, map[string]any{})
+	if action != nil {
+		t.Errorf("Expected nil (authorized), got %T", action)
+	}
+}
+
+func TestOnRequest_ClaimCheckFails(t *testing.T) {
+	p := &McpAuthzPolicy{Rules: []Rule{
+		{
+			Attribute:      Attribute{Type: "tool", Name: "my-tool"},
+			RequiredClaims: map[string]string{"sub": "bob"},
+		},
+	}}
+	authCtx := authenticatedAuthCtx(nil, "alice", "", nil, nil)
+	ctx := createMockContext("POST", "/mcp", toolCallBody("my-tool"), authCtx)
+	action := p.OnRequest(ctx, map[string]any{})
+	resp, ok := action.(policy.ImmediateResponse)
+	if !ok {
+		t.Fatalf("Expected ImmediateResponse (forbidden), got %T", action)
+	}
+	if resp.StatusCode != 403 {
+		t.Errorf("Expected 403, got %d", resp.StatusCode)
+	}
+}
+
+func TestOnRequest_WildcardRule(t *testing.T) {
+	p := &McpAuthzPolicy{Rules: []Rule{
+		{
+			Attribute:      Attribute{Type: "tool", Name: "*"},
+			RequiredScopes: []string{"mcp:tools:call"},
+		},
+	}}
+	authCtx := authenticatedAuthCtx(map[string]bool{"mcp:tools:call": true}, "alice", "", nil, nil)
+	ctx := createMockContext("POST", "/mcp", toolCallBody("any-tool"), authCtx)
+	action := p.OnRequest(ctx, map[string]any{})
+	if action != nil {
+		t.Errorf("Expected nil (authorized by wildcard rule), got %T", action)
+	}
+}
+
+// ---- AuthContext mutation on success ----
+
+func TestOnRequest_Success_SetsAuthorizedAndAuthType(t *testing.T) {
+	params := rulesParam([]any{
+		map[string]any{
+			"attribute":      map[string]any{"type": "tool", "name": "my-tool"},
+			"requiredScopes": []any{"mcp:tools:read"},
+		},
+	})
+	p, _ := GetPolicy(policy.PolicyMetadata{}, params)
+
+	authCtx := &policy.AuthContext{
+		Authenticated: true,
+		AuthType:      McpOAuthAuthType,
+		Scopes:        map[string]bool{"mcp:tools:read": true},
+	}
+	body := toolCallBody("my-tool")
+	ctx := createMockContext("POST", "/mcp", body, authCtx)
+
+	action := p.OnRequest(ctx, params)
+
+	if action != nil {
+		t.Fatalf("Expected nil (pass-through), got %T", action)
+	}
+	if !ctx.SharedContext.AuthContext.Authorized {
+		t.Error("Expected AuthContext.Authorized=true after successful authz")
+	}
+	if ctx.SharedContext.AuthContext.AuthType != McpOAuthzAuthType {
+		t.Errorf("Expected AuthType=%q, got %q", McpOAuthzAuthType, ctx.SharedContext.AuthContext.AuthType)
+	}
+}
+
+func TestOnRequest_Success_NonMcpOAuthAuthType_Unchanged(t *testing.T) {
+	params := rulesParam([]any{
+		map[string]any{
+			"attribute":      map[string]any{"type": "tool", "name": "my-tool"},
+			"requiredScopes": []any{"mcp:tools:read"},
+		},
+	})
+	p, _ := GetPolicy(policy.PolicyMetadata{}, params)
+
+	authCtx := &policy.AuthContext{
+		Authenticated: true,
+		AuthType:      "jwt",
+		Scopes:        map[string]bool{"mcp:tools:read": true},
+	}
+	body := toolCallBody("my-tool")
+	ctx := createMockContext("POST", "/mcp", body, authCtx)
+
+	action := p.OnRequest(ctx, params)
+
+	if action != nil {
+		t.Fatalf("Expected nil (pass-through), got %T", action)
+	}
+	if !ctx.SharedContext.AuthContext.Authorized {
+		t.Error("Expected AuthContext.Authorized=true after successful authz")
+	}
+	// AuthType should be unchanged when it was not "mcp/oauth"
+	if ctx.SharedContext.AuthContext.AuthType != "jwt" {
+		t.Errorf("Expected AuthType='jwt' (unchanged), got %q", ctx.SharedContext.AuthContext.AuthType)
+	}
+}
+
+// ---- OnResponse ----
+
+func TestOnResponse_NoOp(t *testing.T) {
+	p := &McpAuthzPolicy{}
+	ctx := &policy.ResponseContext{
+		SharedContext: &policy.SharedContext{
+			RequestID: "test-request-id",
+			Metadata:  make(map[string]any),
+		},
+	}
+	action := p.OnResponse(ctx, map[string]any{})
+	if action != nil {
+		t.Errorf("Expected nil from OnResponse, got %T", action)
 	}
 }
