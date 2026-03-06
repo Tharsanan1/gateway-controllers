@@ -35,7 +35,8 @@ const (
 
 // JSONXMLMediationPolicy mediates request/response payloads between JSON and XML.
 type JSONXMLMediationPolicy struct {
-	upstreamPayloadFormat string
+	upstreamPayloadFormat   string
+	downstreamPayloadFormat string
 }
 
 func GetPolicy(
@@ -47,8 +48,17 @@ func GetPolicy(
 		return nil, err
 	}
 
+	downstreamPayloadFormat, err := getDownstreamPayloadFormat(params)
+	if err != nil {
+		return nil, err
+	}
+	if downstreamPayloadFormat == upstreamPayloadFormat {
+		return nil, fmt.Errorf("Invalid policy configuration: downsteamPayloadFormat must be different from upstreamPayloadFormat")
+	}
+
 	return &JSONXMLMediationPolicy{
-		upstreamPayloadFormat: upstreamPayloadFormat,
+		upstreamPayloadFormat:   upstreamPayloadFormat,
+		downstreamPayloadFormat: downstreamPayloadFormat,
 	}, nil
 }
 
@@ -70,47 +80,37 @@ func (p *JSONXMLMediationPolicy) OnRequest(ctx *policy.RequestContext, _ map[str
 
 	contentType := getFirstHeader(ctx.Headers, "content-type")
 
-	switch p.upstreamPayloadFormat {
-	case upstreamPayloadFormatXML:
-		if !strings.Contains(contentType, "application/json") {
-			return p.handleInternalServerError("Content-Type must be application/json when upstreamPayloadFormat is xml")
-		}
+	if !matchesContentType(contentType, p.downstreamPayloadFormat) {
+		return p.handleInternalServerError(fmt.Sprintf(
+			"Content-Type must be %s for downstream payload format %s",
+			expectedContentTypeMessage(p.downstreamPayloadFormat),
+			p.downstreamPayloadFormat,
+		))
+	}
 
-		xmlData, convErr := p.convertJSONBytesToXML(ctx.Body.Content)
-		if convErr != nil {
-			return p.handleInternalServerError("Failed to convert JSON to XML format")
-		}
+	if p.downstreamPayloadFormat == p.upstreamPayloadFormat {
+		return policy.UpstreamRequestModifications{}
+	}
 
-		return policy.UpstreamRequestModifications{
-			Body: xmlData,
-			SetHeaders: map[string]string{
-				"content-type":   "application/xml",
-				"content-length": fmt.Sprintf("%d", len(xmlData)),
-			},
-		}
-	case upstreamPayloadFormatJSON:
-		if !strings.Contains(contentType, "application/xml") && !strings.Contains(contentType, "text/xml") {
-			return p.handleInternalServerError("Content-Type must be application/xml or text/xml when upstreamPayloadFormat is json")
-		}
+	convertedBody, convertedContentType, convErr := p.convertBetweenFormats(
+		ctx.Body.Content,
+		p.downstreamPayloadFormat,
+		p.upstreamPayloadFormat,
+	)
+	if convErr != nil {
+		return p.handleInternalServerError(convErr.Error())
+	}
 
-		jsonData, convErr := p.convertXMLToJSON(ctx.Body.Content)
-		if convErr != nil {
-			return p.handleInternalServerError("Failed to convert XML to JSON format: " + convErr.Error())
-		}
-
-		return policy.UpstreamRequestModifications{
-			Body: jsonData,
-			SetHeaders: map[string]string{
-				"content-type":   "application/json",
-				"content-length": fmt.Sprintf("%d", len(jsonData)),
-			},
-		}
-	default:
-		return p.handleInternalServerError("Unsupported upstreamPayloadFormat value")
+	return policy.UpstreamRequestModifications{
+		Body: convertedBody,
+		SetHeaders: map[string]string{
+			"content-type":   convertedContentType,
+			"content-length": fmt.Sprintf("%d", len(convertedBody)),
+		},
 	}
 }
 
-// OnResponse applies the reverse conversion automatically.
+// OnResponse mediates the upstream response to the configured downstream payload format.
 func (p *JSONXMLMediationPolicy) OnResponse(ctx *policy.ResponseContext, _ map[string]interface{}) policy.ResponseAction {
 	if ctx.ResponseBody == nil || !ctx.ResponseBody.Present || len(ctx.ResponseBody.Content) == 0 {
 		return policy.UpstreamResponseModifications{}
@@ -118,66 +118,73 @@ func (p *JSONXMLMediationPolicy) OnResponse(ctx *policy.ResponseContext, _ map[s
 
 	contentType := getFirstHeader(ctx.ResponseHeaders, "content-type")
 
-	// Apply reverse conversion in response flow.
-	switch p.upstreamPayloadFormat {
-	case upstreamPayloadFormatXML:
-		// Upstream expects XML, so response from upstream must be XML->JSON.
-		if !strings.Contains(contentType, "application/xml") && !strings.Contains(contentType, "text/xml") {
-			return p.handleInternalServerErrorResponse("Content-Type must be application/xml or text/xml in response when upstreamPayloadFormat is xml")
-		}
+	if !matchesContentType(contentType, p.upstreamPayloadFormat) {
+		return p.handleInternalServerErrorResponse(fmt.Sprintf(
+			"Content-Type must be %s in response for upstream payload format %s",
+			expectedContentTypeMessage(p.upstreamPayloadFormat),
+			p.upstreamPayloadFormat,
+		))
+	}
 
-		jsonData, convErr := p.convertXMLToJSON(ctx.ResponseBody.Content)
-		if convErr != nil {
-			return p.handleInternalServerErrorResponse("Failed to convert XML to JSON format: " + convErr.Error())
-		}
+	if p.upstreamPayloadFormat == p.downstreamPayloadFormat {
+		return policy.UpstreamResponseModifications{}
+	}
 
-		return policy.UpstreamResponseModifications{
-			Body: jsonData,
-			SetHeaders: map[string]string{
-				"content-type":   "application/json",
-				"content-length": fmt.Sprintf("%d", len(jsonData)),
-			},
-		}
-	case upstreamPayloadFormatJSON:
-		// Upstream expects JSON, so response from upstream must be JSON->XML.
-		if !strings.Contains(contentType, "application/json") {
-			return p.handleInternalServerErrorResponse("Content-Type must be application/json in response when upstreamPayloadFormat is json")
-		}
+	convertedBody, convertedContentType, convErr := p.convertBetweenFormats(
+		ctx.ResponseBody.Content,
+		p.upstreamPayloadFormat,
+		p.downstreamPayloadFormat,
+	)
+	if convErr != nil {
+		return p.handleInternalServerErrorResponse(convErr.Error())
+	}
 
-		xmlData, convErr := p.convertJSONBytesToXML(ctx.ResponseBody.Content)
-		if convErr != nil {
-			return p.handleInternalServerErrorResponse("Failed to convert JSON to XML format")
-		}
-
-		return policy.UpstreamResponseModifications{
-			Body: xmlData,
-			SetHeaders: map[string]string{
-				"content-type":   "application/xml",
-				"content-length": fmt.Sprintf("%d", len(xmlData)),
-			},
-		}
-	default:
-		return p.handleInternalServerErrorResponse("Unsupported upstreamPayloadFormat value")
+	return policy.UpstreamResponseModifications{
+		Body: convertedBody,
+		SetHeaders: map[string]string{
+			"content-type":   convertedContentType,
+			"content-length": fmt.Sprintf("%d", len(convertedBody)),
+		},
 	}
 }
 
 func getUpstreamPayloadFormat(params map[string]interface{}) (string, error) {
-	upstreamPayloadFormatRaw, ok := params["upstreamPayloadFormat"]
+	upstreamPayloadFormat, _, err := getPayloadFormat(params, "upstreamPayloadFormat", true)
+	return upstreamPayloadFormat, err
+}
+
+func getDownstreamPayloadFormat(params map[string]interface{}) (string, error) {
+	downstreamPayloadFormat, _, err := getPayloadFormat(params, "downsteamPayloadFormat", true)
+	return downstreamPayloadFormat, err
+}
+
+func getPayloadFormat(params map[string]interface{}, key string, required bool) (string, bool, error) {
+	if params == nil {
+		if required {
+			return "", false, fmt.Errorf("Invalid policy configuration: %s must be a non-empty string", key)
+		}
+		return "", false, nil
+	}
+
+	payloadFormatRaw, ok := params[key]
 	if !ok {
-		return "", fmt.Errorf("Invalid policy configuration: upstreamPayloadFormat must be a non-empty string")
+		if required {
+			return "", false, fmt.Errorf("Invalid policy configuration: %s must be a non-empty string", key)
+		}
+		return "", false, nil
 	}
 
-	upstreamPayloadFormat, ok := upstreamPayloadFormatRaw.(string)
-	if !ok || strings.TrimSpace(upstreamPayloadFormat) == "" {
-		return "", fmt.Errorf("Invalid policy configuration: upstreamPayloadFormat must be a non-empty string")
+	payloadFormat, ok := payloadFormatRaw.(string)
+	if !ok || strings.TrimSpace(payloadFormat) == "" {
+		return "", true, fmt.Errorf("Invalid policy configuration: %s must be a non-empty string", key)
 	}
 
-	normalized := strings.ToLower(strings.TrimSpace(upstreamPayloadFormat))
+	normalized := strings.ToLower(strings.TrimSpace(payloadFormat))
 	if normalized != upstreamPayloadFormatXML && normalized != upstreamPayloadFormatJSON {
-		return "", fmt.Errorf("Invalid policy configuration: upstreamPayloadFormat must be one of [xml, json]")
+		return "", true, fmt.Errorf("Invalid policy configuration: %s must be one of [xml, json]", key)
 	}
 
-	return normalized, nil
+	return normalized, true, nil
 }
 
 func getFirstHeader(headers *policy.Headers, key string) string {
@@ -191,6 +198,54 @@ func getFirstHeader(headers *policy.Headers, key string) string {
 	}
 
 	return strings.ToLower(vals[0])
+}
+
+func matchesContentType(contentType, payloadFormat string) bool {
+	switch payloadFormat {
+	case upstreamPayloadFormatXML:
+		return strings.Contains(contentType, "application/xml") || strings.Contains(contentType, "text/xml")
+	case upstreamPayloadFormatJSON:
+		return strings.Contains(contentType, "application/json")
+	default:
+		return false
+	}
+}
+
+func expectedContentTypeMessage(payloadFormat string) string {
+	switch payloadFormat {
+	case upstreamPayloadFormatXML:
+		return "application/xml or text/xml"
+	case upstreamPayloadFormatJSON:
+		return "application/json"
+	default:
+		return "a supported content type"
+	}
+}
+
+func canonicalContentType(payloadFormat string) string {
+	if payloadFormat == upstreamPayloadFormatXML {
+		return "application/xml"
+	}
+	return "application/json"
+}
+
+func (p *JSONXMLMediationPolicy) convertBetweenFormats(body []byte, sourceFormat, targetFormat string) ([]byte, string, error) {
+	switch {
+	case sourceFormat == upstreamPayloadFormatJSON && targetFormat == upstreamPayloadFormatXML:
+		xmlData, err := p.convertJSONBytesToXML(body)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to convert JSON to XML format: %w", err)
+		}
+		return xmlData, canonicalContentType(targetFormat), nil
+	case sourceFormat == upstreamPayloadFormatXML && targetFormat == upstreamPayloadFormatJSON:
+		jsonData, err := p.convertXMLToJSON(body)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to convert XML to JSON format: %w", err)
+		}
+		return jsonData, canonicalContentType(targetFormat), nil
+	default:
+		return nil, "", fmt.Errorf("unsupported payload mediation from %s to %s", sourceFormat, targetFormat)
+	}
 }
 
 func (p *JSONXMLMediationPolicy) handleInternalServerError(message string) policy.RequestAction {

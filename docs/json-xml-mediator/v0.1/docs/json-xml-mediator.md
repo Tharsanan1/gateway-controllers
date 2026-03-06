@@ -5,17 +5,17 @@ title: "Overview"
 
 ## Overview
 
-The JSON XML Mediator policy converts request payloads in one direction and automatically applies the reverse conversion in the response flow.
+The JSON XML Mediator policy mediates request and response payloads between the format expected by downstream clients and the format expected by the upstream service.
 
-Use this when backend and client payload formats differ, and you want one policy to keep request and response formats symmetric.
+Use this when backend and client payload formats differ, and you want one policy to convert requests on the way in and responses on the way out.
 
 ## Features
 
-- Converts request payloads based on one parameter
-- Automatically applies the inverse conversion on responses
-- Supports both directions:
-  - `upstreamPayloadFormat: xml` converts request `JSON -> XML` and response `XML -> JSON`
-  - `upstreamPayloadFormat: json` converts request `XML -> JSON` and response `JSON -> XML`
+- Separately configures downstream and upstream payload formats
+- Converts request bodies from `downsteamPayloadFormat` to `upstreamPayloadFormat`
+- Converts response bodies from `upstreamPayloadFormat` to `downsteamPayloadFormat`
+- Requires both formats to be configured explicitly
+- Rejects configurations where `upstreamPayloadFormat` and `downsteamPayloadFormat` are the same
 - Updates `content-type` and `content-length` after transformation
 - Returns `500` with JSON error payload when conversion fails
 
@@ -25,7 +25,8 @@ Use this when backend and client payload formats differ, and you want one policy
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `upstreamPayloadFormat` | string | Yes | - | Specifies the payload format expected by upstream. Supported values: `xml`, `json`. Response conversion is applied in reverse automatically. |
+| `upstreamPayloadFormat` | string | Yes | - | Specifies the payload format expected by the upstream service. Supported values: `xml`, `json`. |
+| `downsteamPayloadFormat` | string | Yes | - | Specifies the payload format expected by downstream clients. Supported values: `xml`, `json`. Requests are converted from this format to `upstreamPayloadFormat`, and responses are converted back to this format. This value must differ from `upstreamPayloadFormat`. |
 
 **Note:**
 
@@ -57,6 +58,7 @@ spec:
       version: v0
       params:
         upstreamPayloadFormat: xml
+        downsteamPayloadFormat: json
 ```
 
 ### Example 2: Request XML to JSON, Response JSON to XML
@@ -78,10 +80,12 @@ spec:
       version: v0
       params:
         upstreamPayloadFormat: json
+        downsteamPayloadFormat: xml
 ```
 
 ## Notes
 
-- The request and response payloads must match the expected source format for each conversion direction.
+- The request payload must match `downsteamPayloadFormat`, and the upstream response payload must match `upstreamPayloadFormat`.
+- `upstreamPayloadFormat` and `downsteamPayloadFormat` must be different values.
 - Unsupported or invalid payload formats result in a `500` response.
 - Empty or absent payloads pass through unchanged.

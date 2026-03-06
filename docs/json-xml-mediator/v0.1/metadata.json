@@ -6,5 +6,5 @@
   "categories": [
     "Transformation"
   ],
-  "description": "Mediates payload format across backend boundaries by converting request bodies between JSON and XML and automatically applying the reverse conversion on responses."
+  "description": "Mediates payload format across backend boundaries by converting requests from the downstream payload format to the upstream payload format and converting responses back for downstream clients."
 }
