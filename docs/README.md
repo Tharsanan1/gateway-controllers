@@ -61,6 +61,7 @@ All available policies, sorted alphabetically.
 | [MCP Spec Validation](./mcp-spec-validation/v0.9/docs/mcp-spec-validation.md) | MCP, Security | Validates incoming MCP requests for conformance with the MCP specification applicable to the declared protocol version. |
 | [Model Round Robin](./model-round-robin/v1.1/docs/model-round-robin.md) | AI | Implements round-robin load balancing for AI models. |
 | [Model Weighted Round Robin](./model-weighted-round-robin/v1.1/docs/model-weighted-round-robin.md) | AI | Implements weighted round-robin load balancing for AI models. |
+| [Mutual TLS Auth](./mtls-auth/v1.0/docs/mtls-authentication.md) | Security | Authenticates API callers using mutual TLS. |
 | [NeMo Guard Content Safety](./nvidia-nemoguard-content-safety/v0.9/docs/nvidia-nemoguard-content-safety.md) | Guardrails, AI | Validates request and/or response content using NVIDIA NeMo Guard (llama-3.1-nemoguard-8b-content-safety). |
 | [OAuth2 Generator](./oauth2-generator/v0.9/docs/oauth2-generator.md) | Security, AI | Generates an upstream credential and injects it into a configurable request header before forwarding the request to the backend. |
 | [Opaque Token Auth](./opaque-token-auth/v1.0/docs/opaque-token-authentication.md) | Security, AI | Validates opaque OAuth 2.0 access tokens via RFC 7662 token introspection. |
