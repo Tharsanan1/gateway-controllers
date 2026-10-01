@@ -78,7 +78,7 @@ SAN values are compared exactly; there is no wildcard or pattern matching. A mal
 
 ### System Parameters (config.toml)
 
-These parameters are set by the administrator in the gateway configuration and apply to every API on the gateway. They cannot be set in an API definition.
+These parameters are set by the administrator in the gateway configuration and apply to every API on the gateway. They cannot be set in an API definition. When the section isn't in your `config.toml`, add it; a key you leave out keeps its default.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
@@ -119,6 +119,8 @@ spec:
   displayName: mTLS Auth Basic API
   version: v1.0
   context: /mtls-basic/$version
+  vhosts:
+    main: mtls-basic.example.com
   upstream:
     main:
       url: http://sample-backend:9080/api/v1
@@ -143,6 +145,8 @@ spec:
   displayName: mTLS Auth SAN API
   version: v1.0
   context: /mtls-san/$version
+  vhosts:
+    main: mtls-san.example.com
   upstream:
     main:
       url: http://sample-backend:9080/api/v1
@@ -173,6 +177,8 @@ spec:
   displayName: mTLS Auth Partners API
   version: v1.0
   context: /mtls-partners/$version
+  vhosts:
+    main: mtls-partners.example.com
   upstream:
     main:
       url: http://sample-backend:9080/api/v1
@@ -204,6 +210,8 @@ spec:
   displayName: mTLS Auth Pinned API
   version: v1.0
   context: /mtls-pinned/$version
+  vhosts:
+    main: mtls-pinned.example.com
   upstream:
     main:
       url: http://sample-backend:9080/api/v1
@@ -239,6 +247,8 @@ spec:
   displayName: mTLS Auth Private API
   version: v1.0
   context: /mtls-private/$version
+  vhosts:
+    main: mtls-private.example.com
   upstream:
     main:
       url: http://sample-backend:9080/api/v1
@@ -267,6 +277,8 @@ spec:
   displayName: mTLS Auth Relay API
   version: v1.0
   context: /mtls-relay/$version
+  vhosts:
+    main: mtls-relay.example.com
   upstream:
     main:
       url: http://sample-backend:9080/api/v1
@@ -296,6 +308,8 @@ spec:
   displayName: mTLS Auth Operation API
   version: v1.0
   context: /mtls-operation/$version
+  vhosts:
+    main: mtls-operation.example.com
   upstream:
     main:
       url: http://sample-backend:9080/api/v1
@@ -325,6 +339,8 @@ spec:
   displayName: mTLS Auth Token API
   version: v1.0
   context: /mtls-token/$version
+  vhosts:
+    main: mtls-token.example.com
   upstream:
     main:
       url: http://sample-backend:9080/api/v1
@@ -357,6 +373,8 @@ spec:
   displayName: mTLS Auth Custom Error API
   version: v1.0
   context: /mtls-custom-error/$version
+  vhosts:
+    main: mtls-custom-error.example.com
   upstream:
     main:
       url: http://sample-backend:9080/api/v1
@@ -427,6 +445,7 @@ With `errorMessageFormat: plain` the body is `errorMessage` as `text/plain`; wit
 
 ## Notes
 
+* **Give each API its own hostname.** Every example sets `vhosts.main`, so the gateway asks for a client certificate only on connections to that hostname, and callers of other APIs, browsers included, aren't asked. An API without `vhosts` is served on the gateway's default hostname. It still works, but the deploy response carries an `MTLS_HOSTNAME_NOT_SCOPED` warning and every connection to the gateway is asked for a certificate. With `mtls_requires_dedicated_hostname` set in the gateway configuration, such an API is refused at deployment.
 * **Pool changes apply on the next request.** The accept list is evaluated against the current pool on every request, so adding, replacing or narrowing a pool entry takes effect without redeploying the API.
 * **A missing authority never authenticates anyone.** If an `accept` entry names an authority that is not in the pool, the policy skips that entry and tries the rest. If none of the entries is in the pool, the API denies every request with its usual response, and the gateway writes one warning to its log rather than one per request. The gateway refuses to deploy an API that names a missing authority and refuses to delete an authority an API still names, so this happens only when a pool entry cannot be read or in the moment before a pool change has reached the gateway.
 * **Load balancer as a caller.** If the load balancer's authority is also pooled as a `role: client` entry that the API accepts, the load balancer's own certificate authenticates every request and the relayed header is ignored, so callers behind it are no longer authenticated individually. The deploy response warns when an accepted authority is also pooled as a relay.
