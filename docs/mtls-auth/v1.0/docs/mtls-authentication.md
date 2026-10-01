@@ -85,7 +85,7 @@ These parameters are set by the administrator in the gateway configuration and a
 | `headerName` | string | No | `"X-WSO2-CLIENT-CERTIFICATE"` | HTTP header in which a trusted front proxy relays the client certificate. Read from the `name` key of the `[router.downstream_tls.client_certificate_header]` section in `config.toml`. |
 | `trustAny` | boolean | No | `false` | If `true`, the certificate header is trusted on any connection whose own certificate was not rejected, not only on a connection from a `role: relay` entry. **Enable it only when nothing but a trusted front proxy can reach the gateway.** Read from the `trust_any` key of the same section. |
 
-> **Warning:** With `trust_any` enabled, any client that can open a connection to the gateway can present any certificate in the header and be authenticated as its subject. Enable it only when the gateway is reachable from nothing but a trusted front proxy. While it is on, the gateway logs a warning at startup and every `mtls-auth` deployment carries a `HEADER_CERT_BYPASS_ACTIVE` warning.
+> **Warning:** With `trust_any` enabled, any client that can open a connection to the gateway can send a certificate in the header without being a relay. The certificate must still be valid and satisfy the API's `accept`, but a certificate is public: a client that has an accepted caller's certificate, even without its private key, is authenticated as that caller. Enable it only when the gateway is reachable from nothing but a trusted front proxy. While it is on, the gateway logs a warning at startup and every `mtls-auth` deployment carries a `HEADER_CERT_BYPASS_ACTIVE` warning.
 
 #### Sample System Configuration
 
