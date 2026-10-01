@@ -68,7 +68,7 @@ The Mutual TLS Authentication policy uses a two-level configuration model. User 
 | `accept[].ca` | string | Yes | - | Name of a `role: client` entry in the gateway's client-CA pool. |
 | `accept[].match.uriSANs` | array | No | - | Accepted URI SANs. The certificate must carry at least one of them. |
 | `accept[].match.dnsSANs` | array | No | - | Accepted DNS SANs. The certificate must carry at least one of them. When both lists are set, the certificate must satisfy both. A `match` must list at least one SAN. |
-| `accept[].thumbprints` | array | No | - | Accepted SHA-256 certificate thumbprints: 64 hex characters, with or without colon separators and a `sha256:` prefix. When set, the list must not be empty. |
+| `accept[].thumbprints` | array | No | - | Accepted SHA-256 certificate thumbprints: 64 hex characters, with or without colon separators and a `sha256:` prefix. The gateway stores each as 64 lowercase hex characters; one given in another form is converted, and the deploy response carries an `MTLS_THUMBPRINT_NORMALISED` warning. When set, the list must not be empty. |
 | `forwardCertificate` | boolean | No | `true` | If `true`, the backend receives `X-Forwarded-Client-Cert` describing the certificate the caller authenticated with. Set to `false` to remove it. The relayed certificate header never reaches the backend. |
 | `onFailureStatusCode` | integer | No | `401` | HTTP status code returned on authentication failure (400-599). |
 | `errorMessageFormat` | enum | No | `"json"` | Format of the failure response. One of `json` (structured error), `plain` (plain text) or `minimal` (the status text only). Any other value is refused at deployment. |
@@ -201,6 +201,12 @@ spec:
 
 Accept only the listed certificates from `partner-b`. When a pinned caller renews its certificate, list the new thumbprint alongside the old one, let the caller switch, then remove the old one.
 
+To get a certificate's thumbprint in the form the gateway stores:
+
+```bash
+openssl x509 -in client.pem -noout -fingerprint -sha256 | cut -d= -f2 | tr -d : | tr A-F a-f
+```
+
 ```yaml
 apiVersion: gateway.api-platform.wso2.com/v1
 kind: RestApi
@@ -222,7 +228,7 @@ spec:
         accept:
           - ca: partner-b
             thumbprints:
-              - "sha256:5b0d9c2f7e4a1b8c3d6e9f0a2b4c6d8e0f1a3b5c7d9e1f2a4b6c8d0e2f4a6b8c"
+              - "5b0d9c2f7e4a1b8c3d6e9f0a2b4c6d8e0f1a3b5c7d9e1f2a4b6c8d0e2f4a6b8c"
   operations:
     - method: GET
       path: /reports
