@@ -299,7 +299,7 @@ spec:
       path: /orders
 ```
 
-The relayed header may carry the certificate as PEM (plain, URL-encoded, or with line breaks replaced by spaces) or as base64-encoded DER. It must carry exactly one value.
+The relayed header may carry the certificate as PEM (plain, URL-encoded, or with line breaks replaced by spaces) or as base64-encoded DER. It must carry exactly one certificate, in one header value.
 
 ### Example 7: Protect One Operation Only
 
@@ -447,7 +447,7 @@ Content-Type: application/json
 {"error":"Unauthorized","message":"Authentication failed"}
 ```
 
-With `errorMessageFormat: plain` the body is `errorMessage` as `text/plain`; with `minimal` it is `Unauthorized`. The cause (for example `no_certificate`, `expired`, `untrusted_chain`, `authority_not_accepted`, `san_mismatch` or `thumbprint_mismatch`) is recorded as the `mtls_auth.reason` span attribute and in the debug log, never in the response.
+With `errorMessageFormat: plain` the body is `errorMessage` as `text/plain`; with `minimal` it is `Unauthorized`. The cause (for example `no_certificate`, `expired`, `untrusted_chain`, `authority_not_accepted`, `san_mismatch` or `thumbprint_mismatch`) is recorded as the `mtls_auth.reason` span attribute and in the policy engine's debug log, never in the response. To see it in the log, set `level = "debug"` under `[policy_engine.logging]` in the gateway's `config.toml`.
 
 ## Notes
 
