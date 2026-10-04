@@ -477,6 +477,8 @@ The load balancer:
 
 If the load balancer verifies the gateway's certificate, its server name for the gateway must be a name that certificate covers. If your callers' certificates are issued by an intermediate authority, put the intermediate in the load balancer's file of callers' authorities.
 
+The directives below send one API's hostname. To put several APIs behind one load balancer, forward the hostname the caller sent instead, and use it as the server name too: in nginx, `proxy_set_header Host $host;` and `proxy_ssl_name $host;`; in HAProxy, leave out the `set-header Host` line, since HAProxy forwards the caller's `Host` as it is, and use `sni req.hdr(host),field(1,:)` on the `server` line. The listener certificate must then cover every API hostname.
+
 **nginx**
 
 - `listen 443 ssl;`, `ssl_certificate` and `ssl_certificate_key` for the load balancer's own front certificate.
@@ -564,6 +566,7 @@ With two proxies in a row, the proxy that faces callers verifies the caller, set
 - The first certificate in the value is the caller's, and only it authenticates. Certificates after it may link it to a pooled authority, as a handshake's chain does. Most load balancers relay only the caller's own certificate, so pool any intermediate authority that issues your callers' certificates.
 - A certificate authority is never accepted as a caller, and the certificate must allow client authentication.
 - An empty value means no certificate. Two header lines are refused.
+- On a relay connection without the header, the load balancer's own certificate is checked against `accept` instead. So a caller who presented no certificate to the load balancer is refused with the reason `authority_not_accepted` and the load balancer's subject, not `no_certificate`.
 
 > **Warning:** The gateway believes the header because it trusts the load balancer, so the load balancer must remove any `X-WSO2-CLIENT-CERTIFICATE` header a caller sends. A certificate is public: a caller without a certificate could otherwise copy an accepted caller's certificate into the header and be authenticated as that caller. With `trust_any`, the same applies to anything that can reach the gateway.
 
@@ -607,7 +610,7 @@ Content-Type: application/json
 {"error":"Unauthorized","message":"Authentication failed"}
 ```
 
-With `errorMessageFormat: plain` the body is `errorMessage` as `text/plain`; with `minimal` it is `Unauthorized`. The cause (for example `no_certificate`, `expired`, `not_yet_valid`, `untrusted_chain`, `invalid_certificate`, `authority_not_accepted`, `san_mismatch` or `thumbprint_mismatch`) is recorded as the `mtls_auth.reason` span attribute and in the policy engine's debug log, never in the response. To see it in the log, set `level = "debug"` under `[policy_engine.logging]` in the gateway's `config.toml`.
+With `errorMessageFormat: plain` the body is `errorMessage` as `text/plain`; with `minimal` it is `Unauthorized`. The cause (for example `no_certificate`, `expired`, `not_yet_valid`, `untrusted_chain`, `invalid_certificate`, `authority_not_accepted`, `san_mismatch` or `thumbprint_mismatch`) is recorded as the `mtls_auth.reason` span attribute and in the policy engine's debug log, never in the response. To see it in the log, set `level = "debug"` under `[policy_engine.logging]` in the gateway's `config.toml`. The debug level also logs every request the policy engine handles in full, so turn it on only while you investigate a refusal.
 
 ## Notes
 
@@ -618,7 +621,7 @@ With `errorMessageFormat: plain` the body is `errorMessage` as `text/plain`; wit
   [router.downstream_tls]
   mtls_requires_dedicated_hostname = true
   ```
-* **Pool changes apply on the next request.** The accept list is evaluated against the current pool on every request, so adding, replacing or narrowing a pool entry takes effect without redeploying the API.
+* **Pool changes apply without a redeploy.** The accept list is evaluated against the current pool on every request, so adding, replacing or narrowing a pool entry takes effect within a few seconds, without redeploying the API.
 * **A missing authority never authenticates anyone.** If an `accept` entry names an authority that is not in the pool, the policy skips that entry and tries the rest. If none of the entries is in the pool, the API denies every request with its usual response, and the gateway writes one warning to its log rather than one per request. The gateway refuses to deploy an API that names a missing authority and refuses to delete an authority an API still names, so this happens only when a pool entry cannot be read or in the moment before a pool change has reached the gateway.
 * **Load balancer as a caller.** If the load balancer's authority is also pooled as a `role: client` entry that the API accepts, the load balancer's own certificate authenticates every request and the relayed header is ignored, so callers behind it are no longer authenticated individually. The deploy response warns when an accepted authority is also pooled as a relay.
 * **Unreadable pool entries.** A pool entry that cannot be read is skipped and logged; the rest of the pool keeps working.
